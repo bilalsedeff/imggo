@@ -23,16 +23,22 @@ if (!supabaseServiceRoleKey) {
  * Server-side Supabase client with service role privileges
  * Bypasses RLS - use with caution
  */
-export const supabaseServer = createClient<Database>(
-  supabaseUrl,
-  supabaseServiceRoleKey,
+const _supabaseServer = createClient<Database>(
+  supabaseUrl!,
+  supabaseServiceRoleKey!,
   {
     auth: {
       autoRefreshToken: false,
       persistSession: false,
     },
+    db: {
+      schema: "public",
+    },
   }
 );
+
+// Re-export with explicit type to help TypeScript
+export const supabaseServer = _supabaseServer as ReturnType<typeof createClient<Database>>;
 
 /**
  * Create a server client with user context (respects RLS)

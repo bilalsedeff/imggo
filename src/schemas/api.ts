@@ -29,10 +29,15 @@ export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
 /**
  * Pagination
  */
-export const PaginationQuerySchema = z.object({
-  page: z.coerce.number().int().positive().default(1),
-  per_page: z.coerce.number().int().positive().max(100).default(20),
+const BasePaginationQuerySchema = z.object({
+  page: z.coerce.number().int().positive().optional().default(1),
+  per_page: z.coerce.number().int().positive().max(100).optional().default(20),
 });
+
+export const PaginationQuerySchema = BasePaginationQuerySchema.transform((data) => ({
+  page: data.page ?? 1,
+  per_page: data.per_page ?? 20,
+}));
 
 export type PaginationQuery = z.infer<typeof PaginationQuerySchema>;
 
@@ -52,19 +57,28 @@ export const PaginatedResponseSchema = <T extends z.ZodTypeAny>(
 /**
  * List patterns query
  */
-export const ListPatternsQuerySchema = PaginationQuerySchema.extend({
+export const ListPatternsQuerySchema = BasePaginationQuerySchema.extend({
   is_active: z.coerce.boolean().optional(),
-});
+}).transform((data) => ({
+  page: data.page ?? 1,
+  per_page: data.per_page ?? 20,
+  is_active: data.is_active,
+}));
 
 export type ListPatternsQuery = z.infer<typeof ListPatternsQuerySchema>;
 
 /**
  * List jobs query
  */
-export const ListJobsQuerySchema = PaginationQuerySchema.extend({
+export const ListJobsQuerySchema = BasePaginationQuerySchema.extend({
   pattern_id: z.string().uuid().optional(),
   status: JobStatusSchema.optional(),
-});
+}).transform((data) => ({
+  page: data.page ?? 1,
+  per_page: data.per_page ?? 20,
+  pattern_id: data.pattern_id,
+  status: data.status,
+}));
 
 export type ListJobsQuery = z.infer<typeof ListJobsQuerySchema>;
 

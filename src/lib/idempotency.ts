@@ -4,6 +4,7 @@
  */
 
 import { logger } from "./logger";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export interface IdempotencyResult<T = unknown> {
   isDuplicate: boolean;
@@ -15,15 +16,7 @@ export interface IdempotencyResult<T = unknown> {
  */
 export async function checkIdempotencyKey(
   idempotencyKey: string,
-  supabaseClient: {
-    from: (table: string) => {
-      select: (columns: string) => {
-        eq: (column: string, value: string) => {
-          single: () => Promise<{ data: { id: string; status: string; manifest: unknown } | null; error: unknown }>;
-        };
-      };
-    };
-  }
+  supabaseClient: SupabaseClient
 ): Promise<IdempotencyResult> {
   try {
     const { data, error } = await supabaseClient

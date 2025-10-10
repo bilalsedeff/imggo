@@ -22,10 +22,12 @@ const BASE_URL = process.env.APP_BASE_URL || "http://localhost:3000";
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context?: { params: Promise<Record<string, string>> }
   ) => {
+    if (!context) throw new ApiError("Missing params", 400);
     const user = await requireAuth(request);
     const { id } = await context.params;
+    if (!id) throw new ApiError("Missing pattern ID", 400);
 
     logger.info("Getting pattern via API", {
       pattern_id: id,
@@ -50,10 +52,12 @@ export const GET = withErrorHandling(
 export const PATCH = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context?: { params: Promise<Record<string, string>> }
   ) => {
+    if (!context) throw new ApiError("Missing params", 400);
     const user = await requireAuth(request);
     const { id } = await context.params;
+    if (!id) throw new ApiError("Missing pattern ID", 400);
 
     const input = await parseBody(request, UpdatePatternSchema);
 
@@ -80,10 +84,12 @@ export const PATCH = withErrorHandling(
 export const DELETE = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context?: { params: Promise<Record<string, string>> }
   ) => {
+    if (!context) throw new ApiError("Missing params", 400);
     const user = await requireAuth(request);
     const { id } = await context.params;
+    if (!id) throw new ApiError("Missing pattern ID", 400);
 
     logger.info("Deleting pattern via API", {
       pattern_id: id,

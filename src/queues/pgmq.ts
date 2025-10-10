@@ -41,6 +41,7 @@ export async function enqueueJob(
       pattern_id: payload.pattern_id,
     });
 
+    // @ts-expect-error Supabase RPC type inference limitation
     const { data, error } = await supabaseServer.rpc("pgmq_send", {
       queue_name: QUEUE_NAME,
       msg: payload,
@@ -86,6 +87,7 @@ export async function readMessages(
   batchSize = 10
 ): Promise<PGMQMessage<QueueJobPayload>[]> {
   try {
+    // @ts-expect-error Supabase RPC type inference limitation
     const { data, error } = await supabaseServer.rpc("pgmq_read", {
       queue_name: QUEUE_NAME,
       vt: vtSeconds,
@@ -109,6 +111,7 @@ export async function readMessages(
  */
 export async function deleteMessage(msgId: number): Promise<boolean> {
   try {
+    // @ts-expect-error Supabase RPC type inference limitation
     const { error } = await supabaseServer.rpc("pgmq_delete", {
       queue_name: QUEUE_NAME,
       msg_id: msgId,
@@ -131,6 +134,7 @@ export async function deleteMessage(msgId: number): Promise<boolean> {
  */
 export async function archiveMessage(msgId: number): Promise<boolean> {
   try {
+    // @ts-expect-error Supabase RPC type inference limitation
     const { error } = await supabaseServer.rpc("pgmq_archive", {
       queue_name: QUEUE_NAME,
       msg_id: msgId,
@@ -159,6 +163,7 @@ export async function getQueueMetrics(): Promise<{
   total_messages: number;
 } | null> {
   try {
+    // @ts-expect-error Supabase RPC type inference limitation
     const { data, error } = await supabaseServer.rpc("pgmq_metrics", {
       queue_name: QUEUE_NAME,
     });
@@ -185,6 +190,7 @@ export async function getQueueMetrics(): Promise<{
  */
 export async function purgeQueue(): Promise<boolean> {
   try {
+    // @ts-expect-error Supabase RPC type inference limitation
     const { error } = await supabaseServer.rpc("pgmq_purge_queue", {
       queue_name: QUEUE_NAME,
     });

@@ -20,10 +20,12 @@ import { logger } from "@/lib/logger";
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context?: { params: Promise<Record<string, string>> }
   ) => {
+    if (!context) throw new ApiError("Missing params", 400);
     const user = await requireAuth(request);
     const { id: patternId } = await context.params;
+    if (!patternId) throw new ApiError("Missing pattern ID", 400);
 
     const input = await parseBody(request, IngestRequestSchema);
 

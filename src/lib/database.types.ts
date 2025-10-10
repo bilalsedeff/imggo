@@ -302,6 +302,47 @@ export interface Database {
         };
         Returns: void;
       };
+      pgmq_send: {
+        Args: {
+          queue_name: string;
+          msg: Json;
+        };
+        Returns: number;
+      };
+      pgmq_read: {
+        Args: {
+          queue_name: string;
+          vt: number;
+          qty: number;
+        };
+        Returns: Json;
+      };
+      pgmq_delete: {
+        Args: {
+          queue_name: string;
+          msg_id: number;
+        };
+        Returns: boolean;
+      };
+      pgmq_archive: {
+        Args: {
+          queue_name: string;
+          msg_id: number;
+        };
+        Returns: boolean;
+      };
+      pgmq_metrics: {
+        Args: {
+          queue_name: string;
+        };
+        Returns: Json;
+      };
+      pgmq_purge_queue: {
+        Args: {
+          queue_name: string;
+        };
+        Returns: number;
+      };
     };
   };
 }

@@ -48,7 +48,7 @@ export async function checkRateLimit(
   endpoint: string,
   supabaseClient: { rpc: (fn: string, params: Record<string, unknown>) => Promise<{ data: boolean | null; error: unknown }> }
 ): Promise<RateLimitResult> {
-  const config = RATE_LIMIT_CONFIGS[endpoint] || RATE_LIMIT_CONFIGS["api.default"];
+  const config = (RATE_LIMIT_CONFIGS[endpoint] || RATE_LIMIT_CONFIGS["api.default"])!;
 
   try {
     const { data: allowed, error } = await supabaseClient.rpc("check_rate_limit", {

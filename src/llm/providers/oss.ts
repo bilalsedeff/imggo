@@ -70,7 +70,7 @@ export async function detectObjects(
 export async function inferManifestOSS(
   imageUrl: string,
   instructions: string,
-  format: ManifestFormat,
+  _format: ManifestFormat,
   jsonSchema?: Record<string, unknown>
 ): Promise<{
   manifest: Record<string, unknown>;

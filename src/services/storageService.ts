@@ -21,7 +21,7 @@ export async function createSignedUploadUrl(params: {
   expiresAt: string;
   uploadPath: string;
 }> {
-  const { userId, path, contentType = "image/jpeg" } = params;
+  const { userId, path, contentType: _contentType = "image/jpeg" } = params;
 
   try {
     logger.info("Creating signed upload URL", {

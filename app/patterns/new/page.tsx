@@ -1,35 +1,362 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/providers/auth-provider";
+import {
+  Sparkles,
+  Lightbulb,
+  LogIn,
+  MoreVertical,
+  Edit3,
+  CheckCircle,
+  ArrowRight,
+  AlertCircle
+} from "lucide-react";
+import { Navbar } from "@/ui/components/navbar";
+import Link from "next/link";
+
+type ManifestFormat = "json" | "yaml" | "xml" | "csv" | "text";
+
+interface ValidationError {
+  line: number;
+  message: string;
+}
 
 export default function NewPatternPage() {
-  const [format, setFormat] = useState("json");
+  const router = useRouter();
+  const { session } = useAuth();
+
+  // Form state
+  const [name, setName] = useState("");
+  const [format, setFormat] = useState<ManifestFormat>("json");
+  const [instructions, setInstructions] = useState("");
+  const [jsonSchema, setJsonSchema] = useState("");
+  const [template, setTemplate] = useState("");
+
+  // UI state
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [isTemplateEditable, setIsTemplateEditable] = useState(false);
+  const [isValidated, setIsValidated] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [showMenu, setShowMenu] = useState(false);
+
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close menu on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setShowMenu(false);
+      }
+    }
+    if (showMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+    return undefined;
+  }, [showMenu]);
+
+  // Load draft from sessionStorage on mount
+  useEffect(() => {
+    const loadDraftData = sessionStorage.getItem("loadDraft");
+    if (loadDraftData) {
+      try {
+        const draft = JSON.parse(loadDraftData);
+        setName(draft.name || "");
+        setFormat(draft.format || "json");
+        setInstructions(draft.instructions || "");
+        setJsonSchema(draft.json_schema || "");
+        setTemplate(draft.template || "");
+        sessionStorage.removeItem("loadDraft"); // Clear after loading
+      } catch (err) {
+        console.error("Failed to load draft:", err);
+      }
+    }
+  }, []);
+
+  // Check if validation is needed
+  const needsValidation = template && isTemplateEditable;
+
+  // Check if publish is enabled
+  const canPublish =
+    session &&
+    name.trim() &&
+    instructions.trim().length >= 30 &&
+    template &&
+    (!isTemplateEditable || isValidated);
+
+  const handleGenerateTemplate = async () => {
+    if (!instructions.trim() || instructions.trim().length < 30) {
+      setError("Instructions must be at least 30 characters");
+      return;
+    }
+
+    if (!session?.access_token) {
+      setError("Please sign in to generate templates");
+      return;
+    }
+
+    setIsGenerating(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/patterns/generate-template", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          name: name || undefined,
+          instructions,
+          format,
+          jsonSchema: jsonSchema ? JSON.parse(jsonSchema) : undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error?.message || "Failed to generate template");
+      }
+
+      const data = await response.json();
+      setTemplate(data.template);
+      setIsTemplateEditable(false);
+      setIsValidated(false);
+      setValidationErrors([]);
+    } catch (err) {
+      console.error("Generate error:", err);
+      setError(err instanceof Error ? err.message : "Failed to generate template");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleEditTemplate = () => {
+    setIsTemplateEditable(true);
+    setIsValidated(false);
+    setShowMenu(false);
+  };
+
+  const handleValidate = () => {
+    // Always reset state at the beginning
+    setValidationErrors([]);
+    setError("");
+    setIsValidated(false);
+
+    try {
+      if (format === "json") {
+        JSON.parse(template);
+      } else if (format === "yaml") {
+        // Basic YAML validation
+        if (!template.trim()) throw new Error("Empty YAML");
+      } else if (format === "xml") {
+        // Basic XML validation
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(template, "text/xml");
+        const errors = doc.querySelectorAll("parsererror");
+        if (errors.length > 0) throw new Error("Invalid XML");
+      } else if (format === "csv") {
+        // Basic CSV validation
+        if (!template.trim()) throw new Error("Empty CSV");
+      }
+
+      // If we get here, validation succeeded
+      setIsValidated(true);
+      setShowMenu(false);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Validation failed";
+      setError(errorMessage);
+
+      // Try to extract line number from error
+      const lineMatch = errorMessage.match(/line (\d+)/i) || errorMessage.match(/position (\d+)/i);
+      if (lineMatch && lineMatch[1]) {
+        setValidationErrors([{
+          line: parseInt(lineMatch[1], 10),
+          message: errorMessage,
+        }]);
+      }
+
+      setIsValidated(false);
+      setShowMenu(false);
+    }
+  };
+
+  const handleCopySchemaToTemplate = () => {
+    if (!jsonSchema.trim()) {
+      setError("JSON Schema is empty");
+      return;
+    }
+
+    try {
+      // Validate JSON Schema first
+      JSON.parse(jsonSchema);
+      setTemplate(jsonSchema);
+      setIsTemplateEditable(true);
+      setIsValidated(false);
+      setError("");
+    } catch (err) {
+      setError("Invalid JSON Schema - cannot copy");
+    }
+  };
+
+  const handlePublishPattern = async () => {
+    if (!session?.access_token) {
+      router.push(`/auth/signin?redirectTo=/patterns/new`);
+      return;
+    }
+
+    setIsPublishing(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/patterns", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          name,
+          format,
+          instructions,
+          json_schema: jsonSchema ? JSON.parse(jsonSchema) : undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error?.message || "Failed to publish pattern");
+      }
+
+      // Show success message and redirect to patterns list
+      setSuccess(`Pattern "${name}" published successfully!`);
+
+      setTimeout(() => {
+        window.location.href = "/patterns";
+      }, 1500);
+    } catch (err) {
+      console.error("Publish error:", err);
+      setError(err instanceof Error ? err.message : "Failed to publish pattern");
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
+  const handleSaveDraft = async () => {
+    if (!session?.access_token) {
+      router.push(`/auth/signin?redirectTo=/patterns/new`);
+      return;
+    }
+
+    setIsSavingDraft(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const draftData = {
+        name: name || "Untitled Draft",
+        format,
+        instructions,
+        json_schema: jsonSchema || null,
+        template: template || null,
+      };
+
+      // Save to localStorage for now (we'll add API later)
+      const drafts = JSON.parse(localStorage.getItem("pattern_drafts") || "[]");
+      const draftId = Date.now().toString();
+      drafts.push({
+        id: draftId,
+        ...draftData,
+        created_at: new Date().toISOString(),
+        user_id: session.user?.id,
+      });
+      localStorage.setItem("pattern_drafts", JSON.stringify(drafts));
+
+      setSuccess("Draft saved successfully!");
+      setTimeout(() => setSuccess(""), 3000);
+    } catch (err) {
+      console.error("Save draft error:", err);
+      setError(err instanceof Error ? err.message : "Failed to save draft");
+    } finally {
+      setIsSavingDraft(false);
+    }
+  };
+
+  const getFormatPlaceholder = (): string => {
+    switch (format) {
+      case "json":
+        return '{\n  "key": "value"\n}';
+      case "yaml":
+        return 'key: value\nlist:\n  - item1\n  - item2';
+      case "xml":
+        return '<root>\n  <item>value</item>\n</root>';
+      case "csv":
+        return 'header1,header2,header3\nvalue1,value2,value3';
+      case "text":
+        return 'Plain text output...';
+      default:
+        return "";
+    }
+  };
 
   return (
-    <div className="min-h-screen p-8">
-      <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8">Pattern Studio</h1>
+    <div className="min-h-screen">
+      <Navbar />
+      <div className="p-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold">Pattern Studio</h1>
+            <p className="text-muted-foreground mt-2">
+              Create a new pattern to analyze images with AI
+            </p>
+          </div>
+
+        {error && (
+          <div className="mb-6 p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive flex items-start gap-2">
+            <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {success && (
+          <div className="mb-6 p-4 bg-green-500/10 border border-green-500/20 rounded-lg text-green-600 dark:text-green-400 flex items-start gap-2">
+            <CheckCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <span>{success}</span>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-8">
-          {/* Left Column - Configuration */}
+          {/* Left Column: Configuration */}
           <div className="space-y-6">
+            {/* Pattern Name */}
             <div>
               <label className="block text-sm font-medium mb-2">
                 Pattern Name
               </label>
               <input
                 type="text"
-                placeholder="e.g., Retail Shelf Audit"
-                className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="My Pattern"
+                className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-background"
               />
             </div>
 
+            {/* Format Selection */}
             <div>
-              <label className="block text-sm font-medium mb-2">Format</label>
+              <label className="block text-sm font-medium mb-2">
+                Output Format
+              </label>
               <select
                 value={format}
-                onChange={(e) => setFormat(e.target.value)}
-                className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
+                onChange={(e) => setFormat(e.target.value as ManifestFormat)}
+                className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-background"
               >
                 <option value="json">JSON</option>
                 <option value="yaml">YAML</option>
@@ -39,76 +366,220 @@ export default function NewPatternPage() {
               </select>
             </div>
 
+            {/* Instructions */}
             <div>
               <label className="block text-sm font-medium mb-2">
-                Instructions
+                <div className="flex items-center gap-2">
+                  <Lightbulb className="w-4 h-4" />
+                  <span>Instructions</span>
+                  <span className="text-xs text-muted-foreground">
+                    (min. 30 characters: {instructions.length}/30)
+                  </span>
+                </div>
               </label>
               <textarea
+                value={instructions}
+                onChange={(e) => setInstructions(e.target.value)}
                 placeholder="Describe what you want to extract from images..."
-                rows={10}
-                className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring resize-none font-mono text-sm"
+                rows={6}
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-background resize-none ${
+                  instructions.length > 0 && instructions.length < 30
+                    ? "border-destructive"
+                    : "border-border"
+                }`}
               />
             </div>
 
+            {/* JSON Schema */}
             <div>
-              <label className="block text-sm font-medium mb-2">
-                JSON Schema (Optional)
+              <label className="text-sm font-medium mb-2 flex items-center justify-between">
+                <span>JSON Schema (Optional)</span>
+                {jsonSchema && (
+                  <button
+                    onClick={handleCopySchemaToTemplate}
+                    className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition"
+                  >
+                    <span>Copy to Template</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </button>
+                )}
               </label>
               <textarea
+                value={jsonSchema}
+                onChange={(e) => setJsonSchema(e.target.value)}
                 placeholder='{"type": "object", "properties": {...}}'
                 rows={8}
-                className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring resize-none font-mono text-sm"
+                className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-background resize-none font-mono text-sm"
               />
             </div>
-
-            <button className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition">
-              Create Pattern
-            </button>
           </div>
 
-          {/* Right Column - Preview */}
+          {/* Right Column: Template Preview */}
           <div className="space-y-6">
+            {/* Template Preview Header with Menu */}
             <div>
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold">Template Preview</h2>
-                <button className="px-3 py-1 text-sm border border-border rounded hover:bg-accent transition">
-                  Generate Template
-                </button>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium">
+                  Template Preview
+                </label>
+                <div className="flex items-center gap-2">
+                  {needsValidation && (
+                    <div className="flex items-center gap-1 text-xs text-yellow-600 dark:text-yellow-400">
+                      <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
+                      <span>Validation needed</span>
+                    </div>
+                  )}
+
+                  {/* Generate Template Button */}
+                  <button
+                    onClick={handleGenerateTemplate}
+                    disabled={isGenerating || instructions.length < 30}
+                    className="relative group px-3 py-1.5 text-sm border border-primary text-primary rounded-md transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    <span className="absolute -inset-0.5 bg-gradient-to-r from-blue-500 to-purple-500 rounded-md blur opacity-20 group-hover:opacity-50 transition-opacity duration-300 animate-[pulse_3s_ease-in-out_infinite] group-hover:animate-[pulse_0.8s_ease-in-out_infinite]"></span>
+                    <span className="relative flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      {isGenerating ? "Generating..." : "Generate"}
+                    </span>
+                  </button>
+
+                  {/* Three-dot Menu */}
+                  {template && (
+                    <div className="relative" ref={menuRef}>
+                      <button
+                        onClick={() => setShowMenu(!showMenu)}
+                        className="p-2 hover:bg-accent rounded-lg transition"
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
+
+                      {showMenu && (
+                        <div className="absolute right-0 mt-2 w-48 bg-background border border-border rounded-lg shadow-lg py-1 z-50">
+                          <button
+                            onClick={handleEditTemplate}
+                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-left hover:bg-accent transition"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                            Edit Template
+                          </button>
+                          <button
+                            onClick={handleValidate}
+                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-left hover:bg-accent transition"
+                          >
+                            <CheckCircle className="w-4 h-4" />
+                            Validate
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="border border-border rounded-lg p-4 bg-muted/30 min-h-[400px]">
-                <pre className="text-sm font-mono">
-                  <code>
-                    {format === "json" &&
-                      `{
-  "example": "template",
-  "will": "appear here"
-}`}
-                    {format === "yaml" &&
-                      `example: template
-will: appear here`}
-                    {format === "xml" && `<root>
-  <example>template</example>
-  <will>appear here</will>
-</root>`}
-                    {format === "csv" && `example,will
-template,appear here`}
-                    {format === "text" && `Example: template
-Will: appear here`}
-                  </code>
-                </pre>
+
+              {/* Template Textarea */}
+              <div className="relative">
+                <textarea
+                  value={template}
+                  onChange={(e) => {
+                    setTemplate(e.target.value);
+                    setIsValidated(false);
+                  }}
+                  placeholder={getFormatPlaceholder()}
+                  readOnly={!isTemplateEditable}
+                  rows={20}
+                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 bg-background resize-none font-mono text-sm ${
+                    !isTemplateEditable
+                      ? "cursor-not-allowed bg-muted/30"
+                      : validationErrors.length > 0
+                      ? "border-destructive focus:ring-destructive"
+                      : isValidated
+                      ? "border-green-500 focus:ring-green-500"
+                      : "border-border focus:ring-primary"
+                  }`}
+                />
+
+                {/* Validation Status */}
+                {isValidated && (
+                  <div className="absolute top-2 right-2 flex items-center gap-1 text-xs text-green-600 dark:text-green-400 bg-green-500/10 px-2 py-1 rounded">
+                    <CheckCircle className="w-3 h-3" />
+                    <span>Valid</span>
+                  </div>
+                )}
+
+                {/* Validation Errors */}
+                {validationErrors.length > 0 && (
+                  <div className="mt-2 p-3 bg-destructive/10 border border-destructive/20 rounded text-sm text-destructive">
+                    <strong>Validation Errors:</strong>
+                    <ul className="mt-1 space-y-1">
+                      {validationErrors.map((error, idx) => (
+                        <li key={idx}>
+                          Line {error.line}: {error.message}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="border border-border rounded-lg p-4 bg-muted/10">
+            {/* Action Buttons */}
+            <div className="flex flex-col gap-3">
+              {!session ? (
+                <Link
+                  href={`/auth/signin?redirectTo=/patterns/new`}
+                  className="flex items-center justify-center gap-2 px-6 py-3 border border-border rounded-lg hover:bg-accent transition"
+                >
+                  <LogIn className="w-4 h-4" />
+                  Sign in to Publish
+                </Link>
+              ) : (
+                <>
+                  <button
+                    onClick={handlePublishPattern}
+                    disabled={!canPublish || isPublishing}
+                    className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                  >
+                    {isPublishing ? "Publishing..." : "Publish Pattern"}
+                  </button>
+
+                  <button
+                    onClick={handleSaveDraft}
+                    disabled={isSavingDraft || !name.trim()}
+                    className="px-6 py-3 border border-border text-muted-foreground rounded-lg hover:bg-accent hover:text-foreground transition disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                  >
+                    {isSavingDraft ? "Saving..." : "Save Draft"}
+                  </button>
+                </>
+              )}
+
+              {/* Helper Text */}
+              {!canPublish && session && (
+                <p className="text-xs text-muted-foreground text-center">
+                  {!name.trim()
+                    ? "• Enter a pattern name"
+                    : instructions.length < 30
+                    ? `• Instructions too short (${instructions.length}/30)`
+                    : !template
+                    ? "• Generate a template first"
+                    : needsValidation && !isValidated
+                    ? "• Validate your template"
+                    : ""}
+                </p>
+              )}
+            </div>
+
+            {/* Info Card */}
+            <div className="p-4 border border-border rounded-lg bg-muted/30">
               <h3 className="text-sm font-medium mb-2">After Publishing</h3>
               <p className="text-sm text-muted-foreground mb-3">
-                Your pattern will be accessible via:
+                Your pattern will be accessible via API:
               </p>
-              <code className="text-xs bg-muted p-2 rounded block">
+              <code className="text-xs bg-muted p-2 rounded block break-all">
                 POST /api/patterns/[id]/ingest
               </code>
             </div>
           </div>
+        </div>
         </div>
       </div>
     </div>

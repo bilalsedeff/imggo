@@ -82,7 +82,7 @@ export async function inferManifest(params: {
       manifest: result.manifest,
       manifestString,
       latencyMs: result.latencyMs,
-      tokensUsed: result.tokensUsed,
+      tokensUsed: "tokensUsed" in result ? (result.tokensUsed as number) : undefined,
     };
   } catch (error) {
     logger.error("Manifest inference failed in orchestrator", error, {

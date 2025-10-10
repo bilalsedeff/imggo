@@ -3,6 +3,8 @@
  */
 
 import { supabaseServer } from "@/lib/supabase-server";
+import { Database } from "@/lib/database.types";
+import { insertRow, updateRow } from "@/lib/supabase-helpers";
 import { logger } from "@/lib/logger";
 import { Job, JobStatus } from "@/schemas/manifest";
 import { enqueueJob, QueueJobPayload } from "@/queues/pgmq";
@@ -27,18 +29,18 @@ export async function createJob(params: {
     });
 
     // Create job record
-    const { data, error } = await supabaseServer
-      .from("jobs")
-      .insert({
-        pattern_id: patternId,
-        image_url: imageUrl,
-        status: "queued",
-        requested_by: userId,
-        idempotency_key: idempotencyKey || null,
-        extras: extras || null,
-      })
-      .select("id, status")
-      .single();
+    type JobInsert = Database["public"]["Tables"]["jobs"]["Insert"];
+
+    const jobData: JobInsert = {
+      pattern_id: patternId,
+      image_url: imageUrl,
+      status: "queued",
+      requested_by: userId,
+      idempotency_key: idempotencyKey || null,
+      extras: extras ? (extras as any) : null,
+    };
+
+    const { data, error } = await insertRow(supabaseServer, "jobs", jobData);
 
     if (error) {
       logger.error("Failed to create job", error, {
@@ -46,6 +48,10 @@ export async function createJob(params: {
         user_id: userId,
       });
       throw new Error(`Failed to create job: ${error.message}`);
+    }
+
+    if (!data) {
+      throw new Error("No data returned from job creation");
     }
 
     const jobId = data.id;
@@ -62,13 +68,16 @@ export async function createJob(params: {
 
     if (!enqueueResult.success) {
       // Mark job as failed if enqueue fails
-      await supabaseServer
-        .from("jobs")
-        .update({
-          status: "failed",
-          error: `Failed to enqueue: ${enqueueResult.error}`,
-        })
-        .eq("id", jobId);
+      type JobUpdate = Database["public"]["Tables"]["jobs"]["Update"];
+      const updateData: JobUpdate = {
+        status: "failed",
+        error: `Failed to enqueue: ${enqueueResult.error}`,
+      };
+
+      await updateRow(supabaseServer, "jobs", updateData, {
+        column: "id",
+        value: jobId,
+      });
 
       throw new Error(`Failed to enqueue job: ${enqueueResult.error}`);
     }

@@ -58,3 +58,9 @@ test.db
 SETUP_GUIDE.md
 QUICK_START.md
 README.md
+supabase/
+supabase
+test-photos/
+.claude/
+.vscode/
+nul

@@ -2,8 +2,11 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  experimental: {
-    typedRoutes: true,
+  typedRoutes: true, // Moved from experimental (Next.js 15.5.4 warning)
+  // @ts-ignore - webpack config to reduce logging
+  webpack: (config: any) => {
+    config.infrastructureLogging = { level: 'error' };
+    return config;
   },
   images: {
     remotePatterns: [

@@ -61,13 +61,15 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     endpoint_url: `${BASE_URL}/api/patterns/${p.id}/ingest`,
   }));
 
+  const perPage = query.per_page ?? 20;
+
   return successResponse({
     data: patternsWithEndpoints,
     pagination: {
-      page: query.page,
-      per_page: query.per_page,
+      page: query.page ?? 1,
+      per_page: perPage,
       total,
-      total_pages: Math.ceil(total / query.per_page),
+      total_pages: Math.ceil(total / perPage),
     },
   });
 });

@@ -16,10 +16,13 @@ import { logger } from "@/lib/logger";
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context?: { params: Promise<Record<string, string>> }
   ) => {
+    if (!context) throw new ApiError("Missing params", 400);
     const user = await requireAuth(request);
     const { id } = await context.params;
+
+    if (!id) throw new ApiError("Missing job ID", 400);
 
     logger.info("Getting job via API", {
       job_id: id,

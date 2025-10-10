@@ -31,17 +31,23 @@ export const InstructionsSchema = z
 export const JsonSchemaSchema = z.record(z.unknown()).nullable().optional();
 
 /**
- * Create Pattern Request
+ * Publish Pattern Request
  */
-export const CreatePatternSchema = z.object({
-  name: PatternNameSchema,
-  format: ManifestFormatSchema.default("json"),
-  instructions: InstructionsSchema,
-  json_schema: JsonSchemaSchema,
-  model_profile: ModelProfileSchema,
-});
+export const CreatePatternSchema = z
+  .object({
+    name: PatternNameSchema,
+    format: ManifestFormatSchema.default("json"),
+    instructions: InstructionsSchema,
+    json_schema: JsonSchemaSchema,
+    model_profile: ModelProfileSchema.default("managed-default"),
+  })
+  .transform((data) => ({
+    ...data,
+    format: data.format ?? "json",
+    model_profile: data.model_profile ?? "managed-default",
+  }));
 
-export type CreatePatternInput = z.infer<typeof CreatePatternSchema>;
+export type CreatePatternInput = z.output<typeof CreatePatternSchema>;
 
 /**
  * Update Pattern Request

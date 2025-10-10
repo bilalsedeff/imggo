@@ -15,7 +15,7 @@ graph TB
     Webhook[Webhook Endpoint]
 
     Client -->|1. Upload Image| Supabase
-    Client -->|2. Create Pattern| NextAPI
+    Client -->|2. Publish Pattern| NextAPI
     NextAPI -->|Store| Supabase
     Client -->|3. POST /ingest| NextAPI
     NextAPI -->|4. Enqueue Job| PGMQ

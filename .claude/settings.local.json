@@ -4,7 +4,16 @@
       "Bash(npm install)",
       "Bash(npx supabase:*)",
       "Bash(npm run dev:*)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(set SUPABASE_ACCESS_TOKEN=sbp_7e337a38def8b1c89581317f68cb7199c5ebae3d)",
+      "Bash($env:SUPABASE_ACCESS_TOKEN=\"sbp_7e337a38def8b1c89581317f68cb7199c5ebae3d\")",
+      "Bash(taskkill:*)",
+      "Bash(npx tsc:*)",
+      "Bash(attrib:*)",
+      "Bash(Get-Process -Name \"node\" -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object -First 3)",
+      "Bash(Format-Table Id,ProcessName,StartTime -AutoSize)",
+      "Bash(node -e \"const { createClient } = require(''@supabase/supabase-js''); console.log(typeof createClient)\")"
     ],
     "deny": [],
     "ask": []
