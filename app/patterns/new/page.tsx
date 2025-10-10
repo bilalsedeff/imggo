@@ -167,11 +167,34 @@ export default function NewPatternPage() {
     const schemaStr = pattern.json_schema ? JSON.stringify(pattern.json_schema, null, 2) : "";
     setJsonSchema(schemaStr);
 
-    // Show latest published template (json_schema formatted)
-    setTemplate(schemaStr);
-    setIsTemplateEditable(true); // Make it editable
+    // Generate format-specific template from json_schema
+    let templatePreview = "";
+    if (pattern.json_schema) {
+      switch (pattern.format) {
+        case "json":
+          templatePreview = JSON.stringify(pattern.json_schema, null, 2);
+          break;
+        case "yaml":
+          // Convert JSON to YAML-like format
+          templatePreview = jsonToYaml(pattern.json_schema);
+          break;
+        case "xml":
+          templatePreview = jsonToXml(pattern.json_schema);
+          break;
+        case "csv":
+          templatePreview = jsonToCsv(pattern.json_schema);
+          break;
+        case "text":
+          templatePreview = jsonToText(pattern.json_schema);
+          break;
+        default:
+          templatePreview = schemaStr;
+      }
+    }
+    setTemplate(templatePreview);
+    setIsTemplateEditable(true);
 
-    setNameAvailable(true); // Pattern name is already valid
+    setNameAvailable(true); // Pattern name is already valid (skip validation)
     setIsValidated(false);
     setValidationErrors([]);
   };
@@ -545,6 +568,56 @@ export default function NewPatternPage() {
     }
   };
 
+  // Format conversion helpers
+  const jsonToYaml = (obj: Record<string, unknown>): string => {
+    const toYamlString = (data: unknown, indent = 0): string => {
+      const spaces = "  ".repeat(indent);
+      if (typeof data === "object" && data !== null && !Array.isArray(data)) {
+        return Object.entries(data)
+          .map(([key, value]) => {
+            if (typeof value === "object" && value !== null) {
+              return `${spaces}${key}:\n${toYamlString(value, indent + 1)}`;
+            }
+            return `${spaces}${key}: ${JSON.stringify(value)}`;
+          })
+          .join("\n");
+      }
+      if (Array.isArray(data)) {
+        return data.map(item => `${spaces}- ${JSON.stringify(item)}`).join("\n");
+      }
+      return `${spaces}${JSON.stringify(data)}`;
+    };
+    return toYamlString(obj);
+  };
+
+  const jsonToXml = (obj: Record<string, unknown>): string => {
+    const toXmlString = (data: unknown, key = "root"): string => {
+      if (typeof data === "object" && data !== null && !Array.isArray(data)) {
+        const children = Object.entries(data)
+          .map(([k, v]) => toXmlString(v, k))
+          .join("\n  ");
+        return `<${key}>\n  ${children}\n</${key}>`;
+      }
+      if (Array.isArray(data)) {
+        return data.map(item => toXmlString(item, "item")).join("\n");
+      }
+      return `<${key}>${data}</${key}>`;
+    };
+    return toXmlString(obj);
+  };
+
+  const jsonToCsv = (obj: Record<string, unknown>): string => {
+    const keys = Object.keys(obj);
+    const values = Object.values(obj).map(v => JSON.stringify(v));
+    return `${keys.join(",")}\n${values.join(",")}`;
+  };
+
+  const jsonToText = (obj: Record<string, unknown>): string => {
+    return Object.entries(obj)
+      .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
+      .join("\n");
+  };
+
   const getFormatPlaceholder = (): string => {
     switch (format) {
       case "json":
@@ -665,13 +738,13 @@ export default function NewPatternPage() {
                   </div>
                 )}
               </div>
-              {nameAvailable === false && name.trim() && (
+              {!selectedPatternId && nameAvailable === false && name.trim() && (
                 <p className="mt-2 text-sm text-destructive flex items-center gap-1">
                   <AlertCircle className="w-4 h-4" />
                   <span>A pattern with this name already exists. Please choose a different name.</span>
                 </p>
               )}
-              {nameAvailable === true && name.trim() && (
+              {!selectedPatternId && nameAvailable === true && name.trim() && (
                 <p className="mt-2 text-sm text-green-600 dark:text-green-400 flex items-center gap-1">
                   <CheckCircle className="w-4 h-4" />
                   <span>This name is available</span>
