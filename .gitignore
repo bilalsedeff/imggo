@@ -53,6 +53,9 @@ next-env.d.ts
 *.db-wal
 test.db
 
+# Database Migrations (contains secrets)
+db/migrations/
+
 
 # Misc
 SETUP_GUIDE.md
