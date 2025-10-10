@@ -12,7 +12,9 @@ import {
   CheckCircle,
   ArrowRight,
   AlertCircle,
-  RotateCcw
+  RotateCcw,
+  PlusCircle,
+  RefreshCw
 } from "lucide-react";
 import { Navbar } from "@/ui/components/navbar";
 import Link from "next/link";
@@ -161,8 +163,14 @@ export default function NewPatternPage() {
     setFormat(pattern.format);
     setOriginalInstructions(pattern.instructions); // Store original
     setInstructions(""); // Empty for follow-up request
-    setJsonSchema(pattern.json_schema ? JSON.stringify(pattern.json_schema, null, 2) : "");
-    setTemplate("");
+
+    const schemaStr = pattern.json_schema ? JSON.stringify(pattern.json_schema, null, 2) : "";
+    setJsonSchema(schemaStr);
+
+    // Show latest published template (json_schema formatted)
+    setTemplate(schemaStr);
+    setIsTemplateEditable(true); // Make it editable
+
     setNameAvailable(true); // Pattern name is already valid
     setIsValidated(false);
     setValidationErrors([]);
@@ -498,6 +506,17 @@ export default function NewPatternPage() {
     setSuccess("");
 
     try {
+      // If updating existing pattern, warn user about draft behavior
+      if (selectedPatternId) {
+        setSuccess(
+          `Draft saved locally. Note: The published version ${(activePatterns.find(p => p.id === selectedPatternId)?.version || 0)} remains active until you publish.`
+        );
+        setTimeout(() => setSuccess(""), 5000);
+      } else {
+        setSuccess("Draft saved successfully!");
+        setTimeout(() => setSuccess(""), 3000);
+      }
+
       const draftData = {
         name: name || "Untitled Draft",
         format,
@@ -505,9 +524,10 @@ export default function NewPatternPage() {
         original_instructions: originalInstructions || null,
         json_schema: jsonSchema || null,
         template: template || null,
+        pattern_id: selectedPatternId || null, // Store which pattern this is a draft for
       };
 
-      // Save to localStorage for now (we'll add API later)
+      // Save to localStorage
       const drafts = JSON.parse(localStorage.getItem("pattern_drafts") || "[]");
       const draftId = Date.now().toString();
       drafts.push({
@@ -517,9 +537,6 @@ export default function NewPatternPage() {
         user_id: session.user?.id,
       });
       localStorage.setItem("pattern_drafts", JSON.stringify(drafts));
-
-      setSuccess("Draft saved successfully!");
-      setTimeout(() => setSuccess(""), 3000);
     } catch (err) {
       console.error("Save draft error:", err);
       setError(err instanceof Error ? err.message : "Failed to save draft");
@@ -576,8 +593,18 @@ export default function NewPatternPage() {
           <div className="space-y-6">
             {/* Pattern Selection */}
             <div>
-              <label className="block text-sm font-medium mb-2">
-                Pattern Mode
+              <label className="block text-sm font-medium mb-2 flex items-center gap-2">
+                {selectedPatternId ? (
+                  <>
+                    <RefreshCw className="w-4 h-4" />
+                    Update Pattern
+                  </>
+                ) : (
+                  <>
+                    <PlusCircle className="w-4 h-4" />
+                    Pattern Mode
+                  </>
+                )}
               </label>
               <select
                 value={selectedPatternId || "new"}
@@ -585,21 +612,22 @@ export default function NewPatternPage() {
                 className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-background"
                 disabled={isLoadingPatterns}
               >
-                <option value="new">➕ Create New Pattern</option>
+                <option value="new">Create New Pattern</option>
                 {activePatterns.length > 0 && (
                   <>
                     <option disabled>──────────</option>
                     {activePatterns.map((pattern) => (
                       <option key={pattern.id} value={pattern.id}>
-                        ✏️ Update: {pattern.name} (v{pattern.version})
+                        {pattern.name} (v{pattern.version})
                       </option>
                     ))}
                   </>
                 )}
               </select>
               {selectedPatternId && (
-                <p className="mt-2 text-sm text-muted-foreground">
-                  You're updating an existing pattern. Publish will create version{" "}
+                <p className="mt-2 text-sm text-muted-foreground flex items-center gap-1">
+                  <AlertCircle className="w-4 h-4" />
+                  Publishing will create version{" "}
                   {(activePatterns.find(p => p.id === selectedPatternId)?.version || 0) + 1}
                 </p>
               )}
@@ -669,15 +697,30 @@ export default function NewPatternPage() {
               </select>
             </div>
 
+            {/* Original Instructions (shown in update mode) */}
+            {originalInstructions && (
+              <div className="bg-muted/50 border border-border rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Lightbulb className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm font-medium text-muted-foreground">
+                    Current Instructions (v{(activePatterns.find(p => p.id === selectedPatternId)?.version || 0)})
+                  </span>
+                </div>
+                <p className="text-sm whitespace-pre-wrap text-muted-foreground">
+                  {originalInstructions}
+                </p>
+              </div>
+            )}
+
             {/* Instructions */}
             <div>
               <label className="text-sm font-medium mb-2 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Lightbulb className="w-4 h-4" />
-                  <span>Instructions</span>
+                  <span>{originalInstructions ? "Follow-up Request" : "Instructions"}</span>
                   <span className="text-xs text-muted-foreground">
                     {originalInstructions
-                      ? `(min. 10 characters: ${instructions.length}/10)`
+                      ? instructions.length === 0 ? "(optional)" : `(${instructions.length} chars)`
                       : `(min. 30 characters: ${instructions.length}/30)`}
                   </span>
                 </div>
@@ -697,10 +740,10 @@ export default function NewPatternPage() {
                 onChange={(e) => setInstructions(e.target.value)}
                 placeholder={
                   originalInstructions
-                    ? "Describe follow-up requests (e.g., 'Add more details', 'Change completely', 'Add boolean items')..."
+                    ? "Optional: Add refinements or changes (e.g., 'Also extract brand names', 'Add price field'). Leave empty to keep same instructions."
                     : "Describe what you want to extract from images..."
                 }
-                rows={6}
+                rows={originalInstructions ? 4 : 6}
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-background resize-none ${
                   instructions.length > 0 &&
                   ((originalInstructions && instructions.length < 10) ||
