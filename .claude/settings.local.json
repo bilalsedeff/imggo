@@ -13,7 +13,8 @@
       "Bash(Get-Process -Name \"node\" -ErrorAction SilentlyContinue)",
       "Bash(Select-Object -First 3)",
       "Bash(Format-Table Id,ProcessName,StartTime -AutoSize)",
-      "Bash(node -e \"const { createClient } = require(''@supabase/supabase-js''); console.log(typeof createClient)\")"
+      "Bash(node -e \"const { createClient } = require(''@supabase/supabase-js''); console.log(typeof createClient)\")",
+      "Bash(rm:*)"
     ],
     "deny": [],
     "ask": []

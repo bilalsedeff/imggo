@@ -4,7 +4,7 @@
 
 import { supabaseServer } from "@/lib/supabase-server";
 import { Database } from "@/lib/database.types";
-import { insertRow, updateRow } from "@/lib/supabase-helpers";
+import { insertRow, callRpc } from "@/lib/supabase-helpers";
 import { logger } from "@/lib/logger";
 import { Job, JobStatus } from "@/schemas/manifest";
 import { enqueueJob, QueueJobPayload } from "@/queues/pgmq";
@@ -68,16 +68,13 @@ export async function createJob(params: {
 
     if (!enqueueResult.success) {
       // Mark job as failed if enqueue fails
-      type JobUpdate = Database["public"]["Tables"]["jobs"]["Update"];
-      const updateData: JobUpdate = {
-        status: "failed",
-        error: `Failed to enqueue: ${enqueueResult.error}`,
-      };
-
-      await updateRow(supabaseServer, "jobs", updateData, {
-        column: "id",
-        value: jobId,
-      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabaseServer.from("jobs") as any)
+        .update({
+          status: "failed",
+          error: `Failed to enqueue: ${enqueueResult.error}`,
+        })
+        .eq("id", jobId);
 
       throw new Error(`Failed to enqueue job: ${enqueueResult.error}`);
     }
@@ -150,9 +147,9 @@ export async function listJobs(
     const { patternId, status, page = 1, perPage = 50 } = options;
     const offset = (page - 1) * perPage;
 
-    const { data, error } = await supabaseServer.rpc("get_my_jobs", {
-      p_pattern_id: patternId || null,
-      p_status: status || null,
+    const { data, error } = await callRpc(supabaseServer, "get_my_jobs", {
+      p_pattern_id: patternId,
+      p_status: status,
       p_limit: perPage,
       p_offset: offset,
     });
@@ -190,16 +187,19 @@ export async function updateJobStatus(
   try {
     const now = new Date().toISOString();
 
-    const { error } = await supabaseServer
-      .from("jobs")
-      .update({
-        status,
-        ...(updates.manifest && { manifest: updates.manifest }),
-        ...(updates.error && { error: updates.error }),
-        ...(updates.latencyMs && { latency_ms: updates.latencyMs }),
-        ...(status === "running" && { started_at: now }),
-        ...(["succeeded", "failed"].includes(status) && { completed_at: now }),
-      })
+    // Build update object
+    const updateData: Database["public"]["Tables"]["jobs"]["Update"] = {
+      status,
+      ...(updates.manifest && { manifest: updates.manifest as Database["public"]["Tables"]["jobs"]["Update"]["manifest"] }),
+      ...(updates.error && { error: updates.error }),
+      ...(updates.latencyMs && { latency_ms: updates.latencyMs }),
+      ...(status === "running" && { started_at: now }),
+      ...(["succeeded", "failed"].includes(status) && { completed_at: now }),
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabaseServer.from("jobs") as any)
+      .update(updateData)
       .eq("id", jobId);
 
     if (error) {

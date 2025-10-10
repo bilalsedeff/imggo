@@ -4,6 +4,7 @@
 
 import { supabaseServer } from "@/lib/supabase-server";
 import { logger } from "@/lib/logger";
+import { insertRow, updateRowNoReturn, deleteRow } from "@/lib/supabase-helpers";
 import { signWebhookPayload } from "@/lib/crypto";
 import { WebhookPayload } from "@/schemas/manifest";
 
@@ -64,9 +65,11 @@ export async function sendWebhook(params: {
     await Promise.allSettled(
       webhooks.map(async (webhook) => {
         try {
-          const signature = signWebhookPayload(payload, webhook.secret);
+          // Type assertion needed because select with specific columns returns partial type
+          const webhookData = webhook as { id: string; url: string; secret: string };
+          const signature = signWebhookPayload(payload, webhookData.secret);
 
-          const response = await fetch(webhook.url, {
+          const response = await fetch(webhookData.url, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -79,25 +82,27 @@ export async function sendWebhook(params: {
 
           if (!response.ok) {
             logger.warn("Webhook delivery failed", {
-              webhook_id: webhook.id,
+              webhook_id: webhookData.id,
               status: response.status,
               job_id: jobId,
             });
           } else {
             logger.info("Webhook delivered", {
-              webhook_id: webhook.id,
+              webhook_id: webhookData.id,
               job_id: jobId,
             });
 
             // Update last triggered timestamp
-            await supabaseServer
-              .from("webhooks")
-              .update({ last_triggered_at: new Date().toISOString() })
-              .eq("id", webhook.id);
+            await updateRowNoReturn(
+              supabaseServer,
+              "webhooks",
+              { last_triggered_at: new Date().toISOString() },
+              { column: "id", value: webhookData.id }
+            );
           }
         } catch (err) {
           logger.error("Webhook delivery exception", err, {
-            webhook_id: webhook.id,
+            webhook_id: (webhook as { id: string }).id,
             job_id: jobId,
           });
         }
@@ -118,21 +123,21 @@ export async function createWebhook(params: {
   events: string[];
 }): Promise<{ id: string }> {
   try {
-    const { data, error } = await supabaseServer
-      .from("webhooks")
-      .insert({
-        user_id: params.userId,
-        url: params.url,
-        secret: params.secret,
-        events: params.events,
-        is_active: true,
-      })
-      .select("id")
-      .single();
+    const { data, error } = await insertRow(supabaseServer, "webhooks", {
+      user_id: params.userId,
+      url: params.url,
+      secret: params.secret,
+      events: params.events,
+      is_active: true,
+    });
 
     if (error) {
       logger.error("Failed to create webhook", error);
       throw new Error(`Failed to create webhook: ${error.message}`);
+    }
+
+    if (!data) {
+      throw new Error("No data returned from webhook creation");
     }
 
     logger.info("Webhook created", {
@@ -187,11 +192,22 @@ export async function deleteWebhook(
   userId: string
 ): Promise<void> {
   try {
-    const { error } = await supabaseServer
+    // Verify ownership first
+    const { data: existingWebhook } = await supabaseServer
       .from("webhooks")
-      .delete()
+      .select("id")
       .eq("id", webhookId)
-      .eq("user_id", userId);
+      .eq("user_id", userId)
+      .single();
+
+    if (!existingWebhook) {
+      throw new Error("Webhook not found or access denied");
+    }
+
+    const { error } = await deleteRow(supabaseServer, "webhooks", {
+      column: "id",
+      value: webhookId,
+    });
 
     if (error) {
       logger.error("Failed to delete webhook", error);

@@ -10,7 +10,6 @@ export type ManifestFormat = z.infer<typeof ManifestFormatSchema>;
 export const ModelProfileSchema = z
   .string()
   .min(1)
-  .default("managed-default")
   .describe("LLM/VLM provider profile");
 
 export const PatternNameSchema = z
@@ -33,21 +32,29 @@ export const JsonSchemaSchema = z.record(z.unknown()).nullable().optional();
 /**
  * Publish Pattern Request
  */
-export const CreatePatternSchema = z
-  .object({
-    name: PatternNameSchema,
-    format: ManifestFormatSchema.default("json"),
-    instructions: InstructionsSchema,
-    json_schema: JsonSchemaSchema,
-    model_profile: ModelProfileSchema.default("managed-default"),
-  })
-  .transform((data) => ({
-    ...data,
-    format: data.format ?? "json",
-    model_profile: data.model_profile ?? "managed-default",
-  }));
+const BaseCreatePatternSchema = z.object({
+  name: PatternNameSchema,
+  format: ManifestFormatSchema.optional(),
+  instructions: InstructionsSchema,
+  json_schema: JsonSchemaSchema,
+  model_profile: ModelProfileSchema.optional(),
+});
 
-export type CreatePatternInput = z.output<typeof CreatePatternSchema>;
+export const CreatePatternSchema = BaseCreatePatternSchema.transform((data) => ({
+  name: data.name,
+  format: (data.format ?? "json") as ManifestFormat,
+  instructions: data.instructions,
+  json_schema: data.json_schema,
+  model_profile: data.model_profile ?? "managed-default",
+}));
+
+export type CreatePatternInput = {
+  name: string;
+  format: ManifestFormat;
+  instructions: string;
+  json_schema?: Record<string, unknown> | null;
+  model_profile: string;
+};
 
 /**
  * Update Pattern Request

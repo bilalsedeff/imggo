@@ -3,7 +3,9 @@
  */
 
 import { supabaseServer } from "@/lib/supabase-server";
+import { Database } from "@/lib/database.types";
 import { logger } from "@/lib/logger";
+import { insertRow, updateRow, updateRowNoReturn, callRpc } from "@/lib/supabase-helpers";
 import {
   CreatePatternInput,
   UpdatePatternInput,
@@ -20,20 +22,16 @@ export async function createPattern(
   try {
     logger.info("Creating pattern", { user_id: userId, name: input.name });
 
-    const { data, error } = await supabaseServer
-      .from("patterns")
-      .insert({
-        user_id: userId,
-        name: input.name,
-        format: input.format,
-        instructions: input.instructions,
-        json_schema: input.json_schema || null,
-        model_profile: input.model_profile,
-        version: 1,
-        is_active: true,
-      })
-      .select()
-      .single();
+    const { data, error } = await insertRow(supabaseServer, "patterns", {
+      user_id: userId,
+      name: input.name,
+      format: input.format,
+      instructions: input.instructions,
+      json_schema: (input.json_schema || null) as Database["public"]["Tables"]["patterns"]["Insert"]["json_schema"],
+      model_profile: input.model_profile,
+      version: 1,
+      is_active: true,
+    });
 
     if (error) {
       logger.error("Failed to create pattern", error, {
@@ -43,11 +41,15 @@ export async function createPattern(
       throw new Error(`Failed to create pattern: ${error.message}`);
     }
 
+    if (!data) {
+      throw new Error("No data returned from pattern creation");
+    }
+
     // Create initial version
-    await supabaseServer.from("pattern_versions").insert({
+    await insertRow(supabaseServer, "pattern_versions", {
       pattern_id: data.id,
       version: 1,
-      json_schema: input.json_schema || null,
+      json_schema: (input.json_schema || null) as Database["public"]["Tables"]["pattern_versions"]["Insert"]["json_schema"],
       instructions: input.instructions,
     });
 
@@ -145,25 +147,41 @@ export async function updatePattern(
   try {
     logger.info("Updating pattern", { pattern_id: patternId, user_id: userId });
 
-    const { data, error } = await supabaseServer
+    // Build update object with only defined fields
+    const updateData: Record<string, unknown> = {};
+    if (input.name) updateData.name = input.name;
+    if (input.format) updateData.format = input.format;
+    if (input.instructions) updateData.instructions = input.instructions;
+    if (input.json_schema !== undefined) updateData.json_schema = input.json_schema;
+    if (input.is_active !== undefined) updateData.is_active = input.is_active;
+
+    // Note: We need to verify user_id separately since our helper only supports single condition
+    // First verify ownership
+    const { data: existingPattern } = await supabaseServer
       .from("patterns")
-      .update({
-        ...(input.name && { name: input.name }),
-        ...(input.format && { format: input.format }),
-        ...(input.instructions && { instructions: input.instructions }),
-        ...(input.json_schema !== undefined && {
-          json_schema: input.json_schema,
-        }),
-        ...(input.is_active !== undefined && { is_active: input.is_active }),
-      })
+      .select("id")
       .eq("id", patternId)
       .eq("user_id", userId)
-      .select()
       .single();
+
+    if (!existingPattern) {
+      throw new Error("Pattern not found or access denied");
+    }
+
+    const { data, error } = await updateRow(
+      supabaseServer,
+      "patterns",
+      updateData,
+      { column: "id", value: patternId }
+    );
 
     if (error) {
       logger.error("Failed to update pattern", error, { pattern_id: patternId });
       throw error;
+    }
+
+    if (!data) {
+      throw new Error("No data returned from pattern update");
     }
 
     return data as Pattern;
@@ -183,12 +201,25 @@ export async function deletePattern(
   try {
     logger.info("Deleting pattern", { pattern_id: patternId, user_id: userId });
 
-    // Soft delete by setting is_active = false
-    const { error } = await supabaseServer
+    // Verify ownership first
+    const { data: existingPattern } = await supabaseServer
       .from("patterns")
-      .update({ is_active: false })
+      .select("id")
       .eq("id", patternId)
-      .eq("user_id", userId);
+      .eq("user_id", userId)
+      .single();
+
+    if (!existingPattern) {
+      throw new Error("Pattern not found or access denied");
+    }
+
+    // Soft delete by setting is_active = false
+    const { error } = await updateRowNoReturn(
+      supabaseServer,
+      "patterns",
+      { is_active: false },
+      { column: "id", value: patternId }
+    );
 
     if (error) {
       logger.error("Failed to delete pattern", error, { pattern_id: patternId });
@@ -217,9 +248,9 @@ export async function publishPatternVersion(
       user_id: userId,
     });
 
-    const { data, error } = await supabaseServer.rpc("publish_pattern_version", {
+    const { data, error } = await callRpc(supabaseServer, "publish_pattern_version", {
       p_pattern_id: patternId,
-      p_json_schema: jsonSchema,
+      p_json_schema: jsonSchema as Database["public"]["Functions"]["publish_pattern_version"]["Args"]["p_json_schema"],
       p_instructions: instructions,
     });
 
@@ -228,6 +259,10 @@ export async function publishPatternVersion(
         pattern_id: patternId,
       });
       throw error;
+    }
+
+    if (data === null) {
+      throw new Error("No version number returned from publish");
     }
 
     const newVersion = data as number;

@@ -1,7 +1,11 @@
 /**
  * ImgGo Worker - Supabase Edge Function
  * Consumes jobs from PGMQ queue and processes them
+ *
+ * @module worker
  */
+
+/// <reference lib="deno.ns" />
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import OpenAI from "https://esm.sh/openai@4";
@@ -39,7 +43,7 @@ interface Pattern {
   model_profile: string;
 }
 
-Deno.serve(async (_req) => {
+Deno.serve(async (_req: Request) => {
   const startTime = Date.now();
   let processedCount = 0;
   let failedCount = 0;

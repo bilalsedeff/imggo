@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "dom", "dom.iterable"],
+    "lib": [
+      "ES2022",
+      "dom",
+      "dom.iterable"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -19,8 +23,12 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"],
-      "@/app/*": ["./app/*"]
+      "@/*": [
+        "./src/*"
+      ],
+      "@/app/*": [
+        "./app/*"
+      ]
     },
     "noUncheckedIndexedAccess": true,
     "noImplicitAny": true,
@@ -35,6 +43,15 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "next-env.d.ts",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".next/types",
+    "supabase/functions/**/*"
+  ]
 }

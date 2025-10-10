@@ -70,7 +70,8 @@ export async function initializePGMQ(): Promise<void> {
 
   try {
     // Create queue if it doesn't exist
-    const { error } = await supabaseServer.rpc("pgmq_create", {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabaseServer.rpc as any)("pgmq_create", {
       queue_name: queueName,
     });
 

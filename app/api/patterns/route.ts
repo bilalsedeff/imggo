@@ -29,7 +29,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     name: input.name,
   });
 
-  const pattern = await patternService.createPattern(user.userId, input);
+  // The input is already transformed by Zod, so it has the correct type
+  const pattern = await patternService.createPattern(user.userId, input as import("@/schemas/pattern").CreatePatternInput);
 
   // Return pattern with endpoint URL
   const patternWithEndpoint = {
