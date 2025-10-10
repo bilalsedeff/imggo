@@ -1,0 +1,451 @@
+openapi: 3.1.0
+info:
+  title: ImgGo API
+  description: Schema-conformant image analysis at scale
+  version: 1.0.0
+  contact:
+    name: ImgGo Support
+    email: support@imggo.ai
+
+servers:
+  - url: http://localhost:3000
+    description: Local development
+  - url: https://api.imggo.ai
+    description: Production
+
+security:
+  - bearerAuth: []
+
+paths:
+  /api/patterns:
+    get:
+      summary: List patterns
+      tags: [Patterns]
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: is_active
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatternsListResponse"
+
+    post:
+      summary: Create pattern
+      tags: [Patterns]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePatternRequest"
+      responses:
+        "201":
+          description: Pattern created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatternResponse"
+
+  /api/patterns/{id}:
+    get:
+      summary: Get pattern
+      tags: [Patterns]
+      parameters:
+        - $ref: "#/components/parameters/PatternId"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatternResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    patch:
+      summary: Update pattern
+      tags: [Patterns]
+      parameters:
+        - $ref: "#/components/parameters/PatternId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePatternRequest"
+      responses:
+        "200":
+          description: Pattern updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatternResponse"
+
+    delete:
+      summary: Delete pattern
+      tags: [Patterns]
+      parameters:
+        - $ref: "#/components/parameters/PatternId"
+      responses:
+        "200":
+          description: Pattern deleted
+
+  /api/patterns/{id}/ingest:
+    post:
+      summary: Ingest image for processing
+      tags: [Jobs]
+      parameters:
+        - $ref: "#/components/parameters/PatternId"
+        - name: Idempotency-Key
+          in: header
+          schema:
+            type: string
+          description: Client-provided idempotency key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IngestRequest"
+      responses:
+        "202":
+          description: Job queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestResponse"
+
+  /api/jobs/{id}:
+    get:
+      summary: Get job status
+      tags: [Jobs]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobResponse"
+
+  /api/uploads/signed-url:
+    post:
+      summary: Create signed upload URL
+      tags: [Storage]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignedUploadRequest"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignedUploadResponse"
+
+  /api/_health:
+    get:
+      summary: Health check
+      tags: [System]
+      security: []
+      responses:
+        "200":
+          description: System healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PatternId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    CreatePatternRequest:
+      type: object
+      required: [name, instructions]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        format:
+          type: string
+          enum: [json, yaml, xml, csv, text]
+          default: json
+        instructions:
+          type: string
+          minLength: 10
+          maxLength: 5000
+        json_schema:
+          type: object
+        model_profile:
+          type: string
+          default: managed-default
+
+    UpdatePatternRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        format:
+          type: string
+          enum: [json, yaml, xml, csv, text]
+        instructions:
+          type: string
+        json_schema:
+          type: object
+        is_active:
+          type: boolean
+
+    PatternResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/Pattern"
+
+    Pattern:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        format:
+          type: string
+          enum: [json, yaml, xml, csv, text]
+        json_schema:
+          type: object
+          nullable: true
+        instructions:
+          type: string
+        model_profile:
+          type: string
+        version:
+          type: integer
+        is_active:
+          type: boolean
+        endpoint_url:
+          type: string
+          format: uri
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PatternsListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/Pattern"
+            pagination:
+              $ref: "#/components/schemas/Pagination"
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        per_page:
+          type: integer
+        total:
+          type: integer
+        total_pages:
+          type: integer
+
+    IngestRequest:
+      type: object
+      required: [image_url]
+      properties:
+        image_url:
+          type: string
+          format: uri
+        extras:
+          type: object
+        idempotency_key:
+          type: string
+
+    IngestResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            job_id:
+              type: string
+              format: uuid
+            status:
+              type: string
+              enum: [queued]
+            message:
+              type: string
+
+    JobResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/Job"
+
+    Job:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        pattern_id:
+          type: string
+          format: uuid
+        image_url:
+          type: string
+        status:
+          type: string
+          enum: [queued, running, succeeded, failed]
+        manifest:
+          type: object
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        latency_ms:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    SignedUploadRequest:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
+        content_type:
+          type: string
+          default: image/jpeg
+
+    SignedUploadResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            url:
+              type: string
+              format: uri
+            token:
+              type: string
+            expires_at:
+              type: string
+              format: date-time
+            upload_path:
+              type: string
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        timestamp:
+          type: string
+          format: date-time
+        services:
+          type: object
+          properties:
+            database:
+              type: string
+              enum: [up, down]
+            storage:
+              type: string
+              enum: [up, down]
+            queue:
+              type: string
+              enum: [up, down]
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
