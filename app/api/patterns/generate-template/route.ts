@@ -9,14 +9,17 @@ export async function POST(request: NextRequest) {
     const user = await requireAuth(request);
 
     const body = await request.json();
-    const { instructions, format, jsonSchema } = body;
+    const {
+      instructions,
+      format,
+      jsonSchema,
+      original_instructions,
+      current_template,
+      follow_up_prompt
+    } = body;
 
-    if (!instructions || typeof instructions !== "string") {
-      return NextResponse.json(
-        { error: "Instructions are required" },
-        { status: 400 }
-      );
-    }
+    // Check if this is a follow-up request
+    const isFollowUp = Boolean(original_instructions && current_template && follow_up_prompt);
 
     if (!format || !["json", "yaml", "xml", "csv", "text"].includes(format)) {
       return NextResponse.json(
@@ -25,20 +28,64 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    logger.info("Generating template", {
-      user_id: user.userId,
-      format,
-      instructionsLength: instructions.length,
-    });
+    let promptToUse: string;
+
+    if (isFollowUp) {
+      // Follow-up request: combine original + current + follow-up
+      if (!follow_up_prompt || typeof follow_up_prompt !== "string") {
+        return NextResponse.json(
+          { error: "Follow-up prompt is required" },
+          { status: 400 }
+        );
+      }
+
+      logger.info("Generating follow-up template", {
+        user_id: user.userId,
+        format,
+        followUpLength: follow_up_prompt.length,
+      });
+
+      // Construct enhanced prompt for follow-up
+      promptToUse = `Original Instructions:
+${original_instructions}
+
+Current Template:
+${current_template}
+
+Follow-up Request:
+${follow_up_prompt}
+
+Please modify the current template according to the follow-up request while maintaining the original intent from the original instructions. Return the complete updated template in ${format} format.`;
+    } else {
+      // Initial request
+      if (!instructions || typeof instructions !== "string") {
+        return NextResponse.json(
+          { error: "Instructions are required" },
+          { status: 400 }
+        );
+      }
+
+      logger.info("Generating initial template", {
+        user_id: user.userId,
+        format,
+        instructionsLength: instructions.length,
+      });
+
+      promptToUse = instructions;
+    }
 
     // Call OpenAI to generate template
     const template = await generateTemplate(
-      instructions,
+      promptToUse,
       format as "json" | "yaml" | "xml" | "csv" | "text",
       jsonSchema
     );
 
-    logger.info("Template generated successfully", { format, templateLength: template.length });
+    logger.info("Template generated successfully", {
+      isFollowUp,
+      format,
+      templateLength: template.length
+    });
 
     return NextResponse.json({ template });
   } catch (error) {

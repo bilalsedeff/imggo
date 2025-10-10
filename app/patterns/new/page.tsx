@@ -11,7 +11,8 @@ import {
   Edit3,
   CheckCircle,
   ArrowRight,
-  AlertCircle
+  AlertCircle,
+  RotateCcw
 } from "lucide-react";
 import { Navbar } from "@/ui/components/navbar";
 import Link from "next/link";
@@ -31,6 +32,7 @@ export default function NewPatternPage() {
   const [name, setName] = useState("");
   const [format, setFormat] = useState<ManifestFormat>("json");
   const [instructions, setInstructions] = useState("");
+  const [originalInstructions, setOriginalInstructions] = useState("");
   const [jsonSchema, setJsonSchema] = useState("");
   const [template, setTemplate] = useState("");
 
@@ -70,6 +72,7 @@ export default function NewPatternPage() {
         setName(draft.name || "");
         setFormat(draft.format || "json");
         setInstructions(draft.instructions || "");
+        setOriginalInstructions(draft.original_instructions || "");
         setJsonSchema(draft.json_schema || "");
         setTemplate(draft.template || "");
         sessionStorage.removeItem("loadDraft"); // Clear after loading
@@ -86,13 +89,26 @@ export default function NewPatternPage() {
   const canPublish =
     session &&
     name.trim() &&
-    instructions.trim().length >= 30 &&
+    (originalInstructions || instructions.trim().length >= 30) && // Either has original or current is valid
     template &&
     (!isTemplateEditable || isValidated);
 
   const handleGenerateTemplate = async () => {
-    if (!instructions.trim() || instructions.trim().length < 30) {
+    const isFollowUp = template && originalInstructions;
+
+    // Validation: ilk generate için 30 karakter, follow-up için en az 10 karakter
+    if (!instructions.trim()) {
+      setError("Please enter instructions");
+      return;
+    }
+
+    if (!isFollowUp && instructions.trim().length < 30) {
       setError("Instructions must be at least 30 characters");
+      return;
+    }
+
+    if (isFollowUp && instructions.trim().length < 10) {
+      setError("Follow-up request must be at least 10 characters");
       return;
     }
 
@@ -105,18 +121,31 @@ export default function NewPatternPage() {
     setError("");
 
     try {
+      const requestBody = isFollowUp
+        ? {
+            // Follow-up request
+            name: name || undefined,
+            original_instructions: originalInstructions,
+            current_template: template,
+            follow_up_prompt: instructions,
+            format,
+            jsonSchema: jsonSchema ? JSON.parse(jsonSchema) : undefined,
+          }
+        : {
+            // Initial request
+            name: name || undefined,
+            instructions,
+            format,
+            jsonSchema: jsonSchema ? JSON.parse(jsonSchema) : undefined,
+          };
+
       const response = await fetch("/api/patterns/generate-template", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({
-          name: name || undefined,
-          instructions,
-          format,
-          jsonSchema: jsonSchema ? JSON.parse(jsonSchema) : undefined,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -129,6 +158,15 @@ export default function NewPatternPage() {
       setIsTemplateEditable(false);
       setIsValidated(false);
       setValidationErrors([]);
+
+      // İlk generate ise: originalInstructions'a kaydet ve instructions'ı temizle
+      if (!isFollowUp) {
+        setOriginalInstructions(instructions);
+        setInstructions("");
+      } else {
+        // Follow-up ise: sadece instructions'ı temizle (original'ı koru)
+        setInstructions("");
+      }
     } catch (err) {
       console.error("Generate error:", err);
       setError(err instanceof Error ? err.message : "Failed to generate template");
@@ -141,6 +179,18 @@ export default function NewPatternPage() {
     setIsTemplateEditable(true);
     setIsValidated(false);
     setShowMenu(false);
+  };
+
+  const handleReset = () => {
+    setName("");
+    setInstructions("");
+    setOriginalInstructions("");
+    setTemplate("");
+    setIsTemplateEditable(false);
+    setIsValidated(false);
+    setValidationErrors([]);
+    setError("");
+    setSuccess("");
   };
 
   const handleValidate = () => {
@@ -224,7 +274,7 @@ export default function NewPatternPage() {
         body: JSON.stringify({
           name,
           format,
-          instructions,
+          instructions: originalInstructions || instructions, // Use original if follow-up was done
           json_schema: jsonSchema ? JSON.parse(jsonSchema) : undefined,
         }),
       });
@@ -263,6 +313,7 @@ export default function NewPatternPage() {
         name: name || "Untitled Draft",
         format,
         instructions,
+        original_instructions: originalInstructions || null,
         json_schema: jsonSchema || null,
         template: template || null,
       };
@@ -368,22 +419,40 @@ export default function NewPatternPage() {
 
             {/* Instructions */}
             <div>
-              <label className="block text-sm font-medium mb-2">
+              <label className="text-sm font-medium mb-2 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Lightbulb className="w-4 h-4" />
                   <span>Instructions</span>
                   <span className="text-xs text-muted-foreground">
-                    (min. 30 characters: {instructions.length}/30)
+                    {originalInstructions
+                      ? `(min. 10 characters: ${instructions.length}/10)`
+                      : `(min. 30 characters: ${instructions.length}/30)`}
                   </span>
                 </div>
+                {template && (
+                  <button
+                    onClick={handleReset}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition"
+                    title="Reset pattern"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Reset</span>
+                  </button>
+                )}
               </label>
               <textarea
                 value={instructions}
                 onChange={(e) => setInstructions(e.target.value)}
-                placeholder="Describe what you want to extract from images..."
+                placeholder={
+                  originalInstructions
+                    ? "Describe follow-up requests (e.g., 'Add more details', 'Change format', 'Fix errors')..."
+                    : "Describe what you want to extract from images..."
+                }
                 rows={6}
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-background resize-none ${
-                  instructions.length > 0 && instructions.length < 30
+                  instructions.length > 0 &&
+                  ((originalInstructions && instructions.length < 10) ||
+                    (!originalInstructions && instructions.length < 30))
                     ? "border-destructive"
                     : "border-border"
                 }`}
@@ -433,10 +502,15 @@ export default function NewPatternPage() {
                   {/* Generate Template Button */}
                   <button
                     onClick={handleGenerateTemplate}
-                    disabled={isGenerating || instructions.length < 30}
+                    disabled={
+                      isGenerating ||
+                      (originalInstructions
+                        ? instructions.length < 10
+                        : instructions.length < 30)
+                    }
                     className="relative group px-3 py-1.5 text-sm border border-primary text-primary rounded-md transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
-                    <span className="absolute -inset-0.5 bg-gradient-to-r from-blue-500 to-purple-500 rounded-md blur opacity-20 group-hover:opacity-50 transition-opacity duration-300 animate-[pulse_3s_ease-in-out_infinite] group-hover:animate-[pulse_0.8s_ease-in-out_infinite]"></span>
+                    <span className="absolute -inset-0.5 bg-gradient-to-r from-blue-500 to-purple-500 rounded-md blur opacity-15 group-hover:opacity-50 transition-all duration-500 [animation:pulse_8s_ease-in-out_infinite] group-hover:[animation:pulse_1s_ease-in-out_infinite]"></span>
                     <span className="relative flex items-center gap-1.5">
                       <Sparkles className="w-3.5 h-3.5" />
                       {isGenerating ? "Generating..." : "Generate"}
@@ -557,7 +631,7 @@ export default function NewPatternPage() {
                 <p className="text-xs text-muted-foreground text-center">
                   {!name.trim()
                     ? "• Enter a pattern name"
-                    : instructions.length < 30
+                    : !originalInstructions && instructions.length < 30
                     ? `• Instructions too short (${instructions.length}/30)`
                     : !template
                     ? "• Generate a template first"
