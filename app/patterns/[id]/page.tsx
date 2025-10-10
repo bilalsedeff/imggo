@@ -111,22 +111,35 @@ export default function PatternDetailPage() {
     setTimeout(() => setCopiedItem(null), 2000);
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Helper to sanitize file names for storage
+  const sanitizeFileName = (fileName: string): string => {
+    const lastDotIndex = fileName.lastIndexOf(".");
+    const name = lastDotIndex !== -1 ? fileName.slice(0, lastDotIndex) : fileName;
+    const ext = lastDotIndex !== -1 ? fileName.slice(lastDotIndex) : "";
 
+    // Remove special characters, keep only alphanumeric, dash, underscore, dot
+    const cleanName = name
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_|_$/g, "");
+
+    return cleanName + ext.toLowerCase();
+  };
+
+  const validateAndSetFile = (file: File): boolean => {
     // Validate file type
     const validTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
     if (!validTypes.includes(file.type)) {
       setUploadError("Please select a valid image file (JPG, PNG, or WebP)");
-      return;
+      return false;
     }
 
     // Validate file size (10MB max)
     const maxSize = 10 * 1024 * 1024;
     if (file.size > maxSize) {
       setUploadError("File size must be less than 10MB");
-      return;
+      return false;
     }
 
     setSelectedFile(file);
@@ -139,6 +152,27 @@ export default function PatternDetailPage() {
       setFilePreview(reader.result as string);
     };
     reader.readAsDataURL(file);
+    return true;
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    validateAndSetFile(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    validateAndSetFile(file);
   };
 
   const handleUpload = async () => {
@@ -151,6 +185,7 @@ export default function PatternDetailPage() {
     try {
       // Step 1: Get signed upload URL
       setUploadProgress(20);
+      const sanitizedName = sanitizeFileName(selectedFile.name);
       const signedUrlResponse = await fetch("/api/uploads/signed-url", {
         method: "POST",
         headers: {
@@ -158,7 +193,7 @@ export default function PatternDetailPage() {
           Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          path: `${Date.now()}_${selectedFile.name}`,
+          path: `${Date.now()}_${sanitizedName}`,
           content_type: selectedFile.type,
         }),
       });
@@ -560,10 +595,12 @@ print(result)`
                 <label
                   htmlFor="file-upload"
                   className="block border-2 border-dashed border-border rounded-lg p-8 text-center cursor-pointer hover:border-primary transition"
+                  onDragOver={handleDragOver}
+                  onDrop={handleDrop}
                 >
                   <Upload className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
                   <p className="text-sm font-medium mb-1">
-                    Click to upload an image
+                    Click to upload or drag & drop
                   </p>
                   <p className="text-xs text-muted-foreground">
                     Supports JPG, PNG, WebP (max 10MB)
