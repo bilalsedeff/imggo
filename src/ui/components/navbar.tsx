@@ -39,16 +39,16 @@ export function Navbar() {
 
         <nav className="flex items-center gap-6">
           <Link
-            href="/patterns"
-            className="text-sm font-medium text-muted-foreground hover:text-foreground transition"
-          >
-            Patterns
-          </Link>
-          <Link
             href="/dashboard"
             className="text-sm font-medium text-muted-foreground hover:text-foreground transition"
           >
             Dashboard
+          </Link>
+          <Link
+            href="/patterns"
+            className="text-sm font-medium text-muted-foreground hover:text-foreground transition"
+          >
+            Patterns
           </Link>
 
           {/* Profile Dropdown */}

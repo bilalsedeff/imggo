@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Navbar } from "@/ui/components/navbar";
-import { FileText, Trash2, Edit, ExternalLink, Copy, CheckCircle } from "lucide-react";
+import { FileText, Trash2, Edit, ExternalLink, Copy, CheckCircle, Power } from "lucide-react";
 import { useAuth } from "@/providers/auth-provider";
 
 interface Draft {
@@ -74,6 +74,59 @@ export default function PatternsPage() {
     const updatedDrafts = drafts.filter((d) => d.id !== id);
     setDrafts(updatedDrafts);
     localStorage.setItem("pattern_drafts", JSON.stringify(updatedDrafts));
+  };
+
+  const handleToggleActive = async (patternId: string, currentStatus: boolean) => {
+    if (!session?.access_token) return;
+
+    try {
+      const response = await fetch(`/api/patterns/${patternId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          is_active: !currentStatus,
+        }),
+      });
+
+      if (response.ok) {
+        // Update local state
+        setPatterns((prev) =>
+          prev.map((p) =>
+            p.id === patternId ? { ...p, is_active: !currentStatus } : p
+          )
+        );
+      } else {
+        console.error("Failed to toggle pattern status");
+      }
+    } catch (err) {
+      console.error("Error toggling pattern status:", err);
+    }
+  };
+
+  const handleDeletePattern = async (patternId: string) => {
+    if (!session?.access_token) return;
+    if (!confirm("Are you sure you want to delete this pattern?")) return;
+
+    try {
+      const response = await fetch(`/api/patterns/${patternId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (response.ok) {
+        // Remove from local state
+        setPatterns((prev) => prev.filter((p) => p.id !== patternId));
+      } else {
+        console.error("Failed to delete pattern");
+      }
+    } catch (err) {
+      console.error("Error deleting pattern:", err);
+    }
   };
 
   const handleLoadDraft = (draft: Draft) => {
@@ -235,10 +288,18 @@ export default function PatternsPage() {
                           <ExternalLink className="w-4 h-4" />
                         </Link>
                         <button
-                          onClick={() => {
-                            // TODO: Implement delete pattern
-                            console.log("Delete pattern:", pattern.id);
-                          }}
+                          onClick={() => handleToggleActive(pattern.id, pattern.is_active)}
+                          className={`p-2 rounded-lg transition ${
+                            pattern.is_active
+                              ? "hover:bg-yellow-500/10 hover:text-yellow-600 text-green-600"
+                              : "hover:bg-green-500/10 hover:text-green-600 text-muted-foreground"
+                          }`}
+                          title={pattern.is_active ? "Deactivate pattern" : "Activate pattern"}
+                        >
+                          <Power className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeletePattern(pattern.id)}
                           className="p-2 hover:bg-destructive/10 hover:text-destructive rounded-lg transition"
                           title="Delete pattern"
                         >
