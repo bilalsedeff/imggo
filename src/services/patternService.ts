@@ -38,6 +38,12 @@ export async function createPattern(
         user_id: userId,
         name: input.name,
       });
+
+      // Check for duplicate name constraint violation
+      if (error.code === "23505" && error.message.includes("patterns_name_user_unique")) {
+        throw new Error(`A pattern with the name "${input.name}" already exists. Please choose a different name.`);
+      }
+
       throw new Error(`Failed to create pattern: ${error.message}`);
     }
 

@@ -46,6 +46,8 @@ export default function NewPatternPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [showMenu, setShowMenu] = useState(false);
+  const [isCheckingName, setIsCheckingName] = useState(false);
+  const [nameAvailable, setNameAvailable] = useState<boolean | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -82,6 +84,43 @@ export default function NewPatternPage() {
     }
   }, []);
 
+  // Check pattern name availability
+  const checkNameAvailability = async () => {
+    if (!session?.access_token || !name.trim()) {
+      setNameAvailable(null);
+      return;
+    }
+
+    setIsCheckingName(true);
+    try {
+      const response = await fetch(
+        `/api/patterns/check-name?name=${encodeURIComponent(name.trim())}`,
+        {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        }
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log("Name check response:", result);
+        // API returns { success: true, data: { available: boolean } }
+        const available = result.data?.available;
+        console.log("Setting nameAvailable to:", available);
+        setNameAvailable(available);
+      } else {
+        console.error("Name check failed:", response.status);
+        setNameAvailable(null);
+      }
+    } catch (err) {
+      console.error("Failed to check name availability:", err);
+      setNameAvailable(null);
+    } finally {
+      setIsCheckingName(false);
+    }
+  };
+
   // Check if validation is needed
   const needsValidation = template && isTemplateEditable;
 
@@ -89,6 +128,7 @@ export default function NewPatternPage() {
   const canPublish =
     session &&
     name.trim() &&
+    nameAvailable !== false && // Only block if explicitly unavailable
     (originalInstructions || instructions.trim().length >= 30) && // Either has original or current is valid
     template &&
     (!isTemplateEditable || isValidated);
@@ -261,6 +301,47 @@ export default function NewPatternPage() {
       return;
     }
 
+    // If name hasn't been checked yet, check it now before publishing
+    if (nameAvailable === null && name.trim()) {
+      setIsCheckingName(true);
+      try {
+        const response = await fetch(
+          `/api/patterns/check-name?name=${encodeURIComponent(name.trim())}`,
+          {
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+          }
+        );
+
+        if (response.ok) {
+          const result = await response.json();
+          const available = result.data?.available;
+
+          if (available === false) {
+            setNameAvailable(false);
+            setIsCheckingName(false);
+            return;
+          }
+
+          setNameAvailable(available);
+        }
+      } catch (err) {
+        console.error("Failed to check name availability:", err);
+        setError("Could not verify pattern name availability. Please try again.");
+        setIsCheckingName(false);
+        return;
+      } finally {
+        setIsCheckingName(false);
+      }
+    }
+
+    // Block if name is explicitly unavailable
+    if (nameAvailable === false) {
+      // Don't set error - the inline warning under the input is enough
+      return;
+    }
+
     setIsPublishing(true);
     setError("");
 
@@ -390,13 +471,42 @@ export default function NewPatternPage() {
               <label className="block text-sm font-medium mb-2">
                 Pattern Name
               </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="My Pattern"
-                className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-background"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    setNameAvailable(null); // Reset validation on change
+                  }}
+                  onBlur={checkNameAvailability}
+                  placeholder="My Pattern"
+                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 bg-background ${
+                    nameAvailable === false
+                      ? "border-destructive focus:ring-destructive"
+                      : nameAvailable === true
+                      ? "border-green-500 focus:ring-green-500"
+                      : "border-border focus:ring-primary"
+                  }`}
+                />
+                {isCheckingName && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                )}
+              </div>
+              {nameAvailable === false && name.trim() && (
+                <p className="mt-2 text-sm text-destructive flex items-center gap-1">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>A pattern with this name already exists. Please choose a different name.</span>
+                </p>
+              )}
+              {nameAvailable === true && name.trim() && (
+                <p className="mt-2 text-sm text-green-600 dark:text-green-400 flex items-center gap-1">
+                  <CheckCircle className="w-4 h-4" />
+                  <span>This name is available</span>
+                </p>
+              )}
             </div>
 
             {/* Format Selection */}
