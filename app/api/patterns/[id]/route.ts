@@ -64,17 +64,44 @@ export const PATCH = withErrorHandling(
     logger.info("Updating pattern via API", {
       pattern_id: id,
       user_id: user.userId,
+      publish_new_version: input.publish_new_version,
     });
 
-    const pattern = await patternService.updatePattern(
-      id,
-      user.userId,
-      input
-    );
+    let pattern;
+    let newVersion: number | null = null;
+
+    if (input.publish_new_version) {
+      // Publish new version (increments version number)
+      if (!input.instructions || !input.format) {
+        throw new ApiError("Instructions and format are required for publishing a new version", 400);
+      }
+
+      newVersion = await patternService.publishPatternVersion(
+        id,
+        user.userId,
+        input.json_schema || null,
+        input.instructions,
+        input.format
+      );
+
+      // Fetch updated pattern
+      pattern = await patternService.getPattern(id, user.userId);
+      if (!pattern) {
+        throw new ApiError("Pattern not found after version publish", 404);
+      }
+    } else {
+      // Regular update (no version increment)
+      pattern = await patternService.updatePattern(
+        id,
+        user.userId,
+        input
+      );
+    }
 
     const patternWithEndpoint = {
       ...pattern,
       endpoint_url: `${BASE_URL}/api/patterns/${pattern.id}/ingest`,
+      ...(newVersion !== null && { new_version: newVersion }),
     };
 
     return successResponse(patternWithEndpoint);

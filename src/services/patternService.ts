@@ -57,6 +57,7 @@ export async function createPattern(
       version: 1,
       json_schema: (input.json_schema || null) as Database["public"]["Tables"]["pattern_versions"]["Insert"]["json_schema"],
       instructions: input.instructions,
+      format: input.format,
     });
 
     logger.info("Pattern created", {
@@ -246,7 +247,8 @@ export async function publishPatternVersion(
   patternId: string,
   userId: string,
   jsonSchema: Record<string, unknown> | null,
-  instructions: string
+  instructions: string,
+  format: string
 ): Promise<number> {
   try {
     logger.info("Publishing pattern version", {
@@ -258,6 +260,7 @@ export async function publishPatternVersion(
       p_pattern_id: patternId,
       p_json_schema: jsonSchema as Database["public"]["Functions"]["publish_pattern_version"]["Args"]["p_json_schema"],
       p_instructions: instructions,
+      p_format: format,
     });
 
     if (error) {

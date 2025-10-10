@@ -24,9 +24,23 @@ interface ValidationError {
   message: string;
 }
 
+interface Pattern {
+  id: string;
+  name: string;
+  format: ManifestFormat;
+  instructions: string;
+  json_schema: Record<string, unknown> | null;
+  version: number;
+}
+
 export default function NewPatternPage() {
   const router = useRouter();
   const { session } = useAuth();
+
+  // Pattern selection
+  const [selectedPatternId, setSelectedPatternId] = useState<string | null>(null);
+  const [activePatterns, setActivePatterns] = useState<Pattern[]>([]);
+  const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
 
   // Form state
   const [name, setName] = useState("");
@@ -65,6 +79,33 @@ export default function NewPatternPage() {
     return undefined;
   }, [showMenu]);
 
+  // Load active patterns on mount
+  useEffect(() => {
+    if (!session?.access_token) return;
+
+    const loadActivePatterns = async () => {
+      setIsLoadingPatterns(true);
+      try {
+        const response = await fetch("/api/patterns?is_active=true&per_page=100", {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          setActivePatterns(result.data?.data || []);
+        }
+      } catch (err) {
+        console.error("Failed to load patterns:", err);
+      } finally {
+        setIsLoadingPatterns(false);
+      }
+    };
+
+    loadActivePatterns();
+  }, [session]);
+
   // Load draft from sessionStorage on mount
   useEffect(() => {
     const loadDraftData = sessionStorage.getItem("loadDraft");
@@ -83,6 +124,39 @@ export default function NewPatternPage() {
       }
     }
   }, []);
+
+  // Handle pattern selection
+  const handlePatternSelect = (patternId: string) => {
+    if (patternId === "new") {
+      // Reset form for new pattern
+      setSelectedPatternId(null);
+      setName("");
+      setFormat("json");
+      setInstructions("");
+      setOriginalInstructions("");
+      setJsonSchema("");
+      setTemplate("");
+      setNameAvailable(null);
+      setIsValidated(false);
+      setValidationErrors([]);
+      return;
+    }
+
+    const pattern = activePatterns.find(p => p.id === patternId);
+    if (!pattern) return;
+
+    // Fill form with pattern data (follow-up mode for instructions)
+    setSelectedPatternId(pattern.id);
+    setName(pattern.name);
+    setFormat(pattern.format);
+    setOriginalInstructions(pattern.instructions); // Store original
+    setInstructions(""); // Empty for follow-up request
+    setJsonSchema(pattern.json_schema ? JSON.stringify(pattern.json_schema, null, 2) : "");
+    setTemplate("");
+    setNameAvailable(true); // Pattern name is already valid
+    setIsValidated(false);
+    setValidationErrors([]);
+  };
 
   // Check pattern name availability
   const checkNameAvailability = async () => {
@@ -346,27 +420,51 @@ export default function NewPatternPage() {
     setError("");
 
     try {
-      const response = await fetch("/api/patterns", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          name,
-          format,
-          instructions: originalInstructions || instructions, // Use original if follow-up was done
-          json_schema: jsonSchema ? JSON.parse(jsonSchema) : undefined,
-        }),
-      });
+      if (selectedPatternId) {
+        // Update existing pattern (increment version)
+        const response = await fetch(`/api/patterns/${selectedPatternId}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            format,
+            instructions: originalInstructions + (instructions ? `\n\n${instructions}` : ""), // Append follow-up
+            json_schema: jsonSchema ? JSON.parse(jsonSchema) : undefined,
+            publish_new_version: true, // Increment version on update
+          }),
+        });
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error?.message || "Failed to publish pattern");
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error?.message || "Failed to update pattern");
+        }
+
+        setSuccess(`Pattern "${name}" updated successfully! New version created.`);
+      } else {
+        // Create new pattern (version 1)
+        const response = await fetch("/api/patterns", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            name,
+            format,
+            instructions: originalInstructions || instructions, // Use original if follow-up was done
+            json_schema: jsonSchema ? JSON.parse(jsonSchema) : undefined,
+          }),
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error?.message || "Failed to publish pattern");
+        }
+
+        setSuccess(`Pattern "${name}" published successfully!`);
       }
-
-      // Show success message and redirect to patterns list
-      setSuccess(`Pattern "${name}" published successfully!`);
 
       setTimeout(() => {
         window.location.href = "/patterns";
@@ -466,6 +564,37 @@ export default function NewPatternPage() {
         <div className="grid grid-cols-2 gap-8">
           {/* Left Column: Configuration */}
           <div className="space-y-6">
+            {/* Pattern Selection */}
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Pattern Mode
+              </label>
+              <select
+                value={selectedPatternId || "new"}
+                onChange={(e) => handlePatternSelect(e.target.value)}
+                className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-background"
+                disabled={isLoadingPatterns}
+              >
+                <option value="new">➕ Create New Pattern</option>
+                {activePatterns.length > 0 && (
+                  <>
+                    <option disabled>──────────</option>
+                    {activePatterns.map((pattern) => (
+                      <option key={pattern.id} value={pattern.id}>
+                        ✏️ Update: {pattern.name} (v{pattern.version})
+                      </option>
+                    ))}
+                  </>
+                )}
+              </select>
+              {selectedPatternId && (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  You're updating an existing pattern. Publish will create version{" "}
+                  {(activePatterns.find(p => p.id === selectedPatternId)?.version || 0) + 1}
+                </p>
+              )}
+            </div>
+
             {/* Pattern Name */}
             <div>
               <label className="block text-sm font-medium mb-2">
@@ -481,8 +610,11 @@ export default function NewPatternPage() {
                   }}
                   onBlur={checkNameAvailability}
                   placeholder="My Pattern"
+                  disabled={selectedPatternId !== null}
                   className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 bg-background ${
-                    nameAvailable === false
+                    selectedPatternId
+                      ? "opacity-60 cursor-not-allowed"
+                      : nameAvailable === false
                       ? "border-destructive focus:ring-destructive"
                       : nameAvailable === true
                       ? "border-green-500 focus:ring-green-500"

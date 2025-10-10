@@ -65,6 +65,7 @@ export const UpdatePatternSchema = z.object({
   instructions: InstructionsSchema.optional(),
   json_schema: JsonSchemaSchema,
   is_active: z.boolean().optional(),
+  publish_new_version: z.boolean().optional().default(false),
 });
 
 export type UpdatePatternInput = z.infer<typeof UpdatePatternSchema>;
