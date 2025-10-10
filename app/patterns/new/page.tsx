@@ -106,6 +106,16 @@ export default function NewPatternPage() {
     loadActivePatterns();
   }, [session]);
 
+  // Load pattern from URL query param (for "Create New Version")
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const patternId = params.get("pattern_id");
+
+    if (patternId && activePatterns.length > 0) {
+      handlePatternSelect(patternId);
+    }
+  }, [activePatterns]); // Run after patterns are loaded
+
   // Load draft from sessionStorage on mount
   useEffect(() => {
     const loadDraftData = sessionStorage.getItem("loadDraft");
