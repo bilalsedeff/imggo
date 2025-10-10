@@ -555,7 +555,7 @@ export default function NewPatternPage() {
                 onChange={(e) => setInstructions(e.target.value)}
                 placeholder={
                   originalInstructions
-                    ? "Describe follow-up requests (e.g., 'Add more details', 'Change format', 'Fix errors')..."
+                    ? "Describe follow-up requests (e.g., 'Add more details', 'Change completely', 'Add boolean items')..."
                     : "Describe what you want to extract from images..."
                 }
                 rows={6}

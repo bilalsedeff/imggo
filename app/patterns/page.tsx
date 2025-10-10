@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Navbar } from "@/ui/components/navbar";
-import { FileText, Trash2, Edit } from "lucide-react";
+import { FileText, Trash2, Edit, ExternalLink, Copy, CheckCircle } from "lucide-react";
+import { useAuth } from "@/providers/auth-provider";
 
 interface Draft {
   id: string;
@@ -16,8 +17,22 @@ interface Draft {
   user_id?: string;
 }
 
+interface Pattern {
+  id: string;
+  name: string;
+  format: string;
+  instructions: string;
+  is_active: boolean;
+  created_at: string;
+  endpoint_url: string;
+}
+
 export default function PatternsPage() {
+  const { session } = useAuth();
   const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [patterns, setPatterns] = useState<Pattern[]>([]);
+  const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
 
   useEffect(() => {
     // Load drafts from localStorage
@@ -26,6 +41,34 @@ export default function PatternsPage() {
       setDrafts(JSON.parse(storedDrafts));
     }
   }, []);
+
+  // Fetch published patterns from API
+  useEffect(() => {
+    if (!session?.access_token) return;
+
+    const fetchPatterns = async () => {
+      setIsLoadingPatterns(true);
+      try {
+        const response = await fetch("/api/patterns", {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          // API returns {success: true, data: {data: [...], pagination: {...}}}
+          setPatterns(result.data?.data || []);
+        }
+      } catch (err) {
+        console.error("Failed to fetch patterns:", err);
+      } finally {
+        setIsLoadingPatterns(false);
+      }
+    };
+
+    fetchPatterns();
+  }, [session]);
 
   const handleDeleteDraft = (id: string) => {
     const updatedDrafts = drafts.filter((d) => d.id !== id);
@@ -111,19 +154,102 @@ export default function PatternsPage() {
           {/* Published Patterns Section */}
           <div>
             <h2 className="text-xl font-semibold mb-4">Published Patterns</h2>
-            <div className="border border-border rounded-lg p-6">
-              <div className="text-center py-12">
-                <p className="text-muted-foreground mb-4">
-                  No patterns published yet
-                </p>
-                <Link
-                  href="/patterns/new"
-                  className="text-primary hover:underline"
-                >
-                  Create your first pattern →
-                </Link>
+            {isLoadingPatterns ? (
+              <div className="border border-border rounded-lg p-6">
+                <div className="text-center py-12">
+                  <p className="text-muted-foreground">Loading patterns...</p>
+                </div>
               </div>
-            </div>
+            ) : patterns.length === 0 ? (
+              <div className="border border-border rounded-lg p-6">
+                <div className="text-center py-12">
+                  <p className="text-muted-foreground mb-4">
+                    No patterns published yet
+                  </p>
+                  <Link
+                    href="/patterns/new"
+                    className="text-primary hover:underline"
+                  >
+                    Create your first pattern →
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {patterns.map((pattern) => (
+                  <div
+                    key={pattern.id}
+                    className="border border-border rounded-lg p-4 hover:bg-accent/50 transition"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <FileText className="w-4 h-4 text-muted-foreground" />
+                          <h3 className="font-medium">{pattern.name}</h3>
+                          <span className="text-xs px-2 py-0.5 bg-muted rounded uppercase">
+                            {pattern.format}
+                          </span>
+                          {pattern.is_active && (
+                            <span className="text-xs px-2 py-0.5 bg-green-500/10 text-green-600 rounded flex items-center gap-1">
+                              <CheckCircle className="w-3 h-3" />
+                              Active
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+                          {pattern.instructions}
+                        </p>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs text-muted-foreground">
+                            Endpoint:
+                          </span>
+                          <code className="text-xs bg-muted px-2 py-1 rounded font-mono flex-1 truncate">
+                            {pattern.endpoint_url}
+                          </code>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(pattern.endpoint_url);
+                              setCopiedUrl(pattern.id);
+                              setTimeout(() => setCopiedUrl(null), 2000);
+                            }}
+                            className="p-1.5 hover:bg-accent rounded transition"
+                            title="Copy endpoint URL"
+                          >
+                            {copiedUrl === pattern.id ? (
+                              <CheckCircle className="w-4 h-4 text-green-600" />
+                            ) : (
+                              <Copy className="w-4 h-4" />
+                            )}
+                          </button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Created {new Date(pattern.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/patterns/${pattern.id}`}
+                          className="p-2 hover:bg-accent rounded-lg transition"
+                          title="View details"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                        </Link>
+                        <button
+                          onClick={() => {
+                            // TODO: Implement delete pattern
+                            console.log("Delete pattern:", pattern.id);
+                          }}
+                          className="p-2 hover:bg-destructive/10 hover:text-destructive rounded-lg transition"
+                          title="Delete pattern"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
