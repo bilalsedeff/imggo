@@ -29,7 +29,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     user_id: user.userId,
   });
 
-  const { page, per_page, pattern_id, status } = query;
+  const { page = 1, per_page = 15, pattern_id, status } = query;
   const offset = (page - 1) * per_page;
 
   // Build query with pattern ownership check

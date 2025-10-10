@@ -19,7 +19,8 @@
       "Bash(git commit -m \"$(cat <<''EOF''\nfeat: add iterative template refinement with follow-up requests\n\n- Add follow-up request system for iterative template improvement\n- Instructions field dynamically changes placeholder after first generate\n- Reset button to clear pattern and start over\n- Generate button requires 30 chars initially, 10 chars for follow-ups\n- Backend handles combined context (original + current + follow-up)\n- Slow down Generate button animation (8s normal, 1s hover)\n- Save/load originalInstructions in drafts\n- Publish uses original instructions when available\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
       "Bash(git commit:*)",
       "Bash(git push:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []
