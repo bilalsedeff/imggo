@@ -192,10 +192,10 @@ export default function NewPatternPage() {
       }
     }
     setTemplate(templatePreview);
-    setIsTemplateEditable(true);
+    setIsTemplateEditable(false); // Don't mark as editable initially - only when user clicks "Edit Template"
 
     setNameAvailable(true); // Pattern name is already valid (skip validation)
-    setIsValidated(false);
+    setIsValidated(true); // Published template is already valid
     setValidationErrors([]);
   };
 
@@ -237,7 +237,7 @@ export default function NewPatternPage() {
   };
 
   // Check if validation is needed
-  const needsValidation = template && isTemplateEditable;
+  const needsValidation = template && isTemplateEditable && !isValidated;
 
   // Check if publish is enabled
   const canPublish =
@@ -309,7 +309,17 @@ export default function NewPatternPage() {
       }
 
       const data = await response.json();
-      setTemplate(data.template);
+
+      // Clean markdown code blocks from AI response
+      const cleanedTemplate = data.template
+        .replace(/```json\s*/g, '')
+        .replace(/```yaml\s*/g, '')
+        .replace(/```xml\s*/g, '')
+        .replace(/```csv\s*/g, '')
+        .replace(/```\s*/g, '')
+        .trim();
+
+      setTemplate(cleanedTemplate);
       setIsTemplateEditable(false);
       setIsValidated(false);
       setValidationErrors([]);
@@ -337,15 +347,52 @@ export default function NewPatternPage() {
   };
 
   const handleReset = () => {
-    setName("");
-    setInstructions("");
-    setOriginalInstructions("");
-    setTemplate("");
-    setIsTemplateEditable(false);
-    setIsValidated(false);
-    setValidationErrors([]);
-    setError("");
-    setSuccess("");
+    if (selectedPatternId) {
+      // Update mode: Reset to published pattern's data
+      const pattern = activePatterns.find(p => p.id === selectedPatternId);
+      if (pattern) {
+        setInstructions(""); // Clear follow-up request
+
+        // Restore published template
+        let templatePreview = "";
+        if (pattern.json_schema) {
+          switch (pattern.format) {
+            case "json":
+              templatePreview = JSON.stringify(pattern.json_schema, null, 2);
+              break;
+            case "yaml":
+              templatePreview = jsonToYaml(pattern.json_schema);
+              break;
+            case "xml":
+              templatePreview = jsonToXml(pattern.json_schema);
+              break;
+            case "csv":
+              templatePreview = jsonToCsv(pattern.json_schema);
+              break;
+            case "text":
+              templatePreview = jsonToText(pattern.json_schema);
+              break;
+          }
+        }
+        setTemplate(templatePreview);
+        setIsTemplateEditable(false); // Lock template to published version
+        setIsValidated(false);
+        setValidationErrors([]);
+        setError("");
+        setSuccess("");
+      }
+    } else {
+      // New pattern mode: Clear everything
+      setName("");
+      setInstructions("");
+      setOriginalInstructions("");
+      setTemplate("");
+      setIsTemplateEditable(false);
+      setIsValidated(false);
+      setValidationErrors([]);
+      setError("");
+      setSuccess("");
+    }
   };
 
   const handleValidate = () => {
@@ -461,42 +508,98 @@ export default function NewPatternPage() {
     setError("");
 
     try {
+      // Prepare schema based on format
+      const schemaData: Record<string, unknown> = {};
+
+      // Clean markdown code blocks from template (AI sometimes returns ```json ... ```)
+      const cleanTemplate = (text: string): string => {
+        return text
+          .replace(/```json\s*/g, '')
+          .replace(/```yaml\s*/g, '')
+          .replace(/```xml\s*/g, '')
+          .replace(/```csv\s*/g, '')
+          .replace(/```\s*/g, '')
+          .trim();
+      };
+
+      // Use template (what user sees in Template Preview) as the schema
+      if (template) {
+        const cleaned = cleanTemplate(template);
+
+        if (format === "json") {
+          schemaData.json_schema = JSON.parse(cleaned);
+        } else if (format === "yaml") {
+          schemaData.yaml_schema = cleaned;
+        } else if (format === "xml") {
+          schemaData.xml_schema = cleaned;
+        } else if (format === "csv") {
+          schemaData.csv_schema = cleaned;
+        } else if (format === "text") {
+          schemaData.plain_text_schema = cleaned;
+        }
+      }
+
       if (selectedPatternId) {
         // Update existing pattern (increment version)
+        const updatePayload = {
+          format,
+          instructions: originalInstructions + (instructions ? `\n\n${instructions}` : ""), // Append follow-up
+          ...schemaData, // Spread format-specific schema
+          publish_new_version: true, // Increment version on update
+        };
+
+        console.log("Update payload:", JSON.stringify(updatePayload, null, 2));
+
         const response = await fetch(`/api/patterns/${selectedPatternId}`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({
-            format,
-            instructions: originalInstructions + (instructions ? `\n\n${instructions}` : ""), // Append follow-up
-            json_schema: jsonSchema ? JSON.parse(jsonSchema) : undefined,
-            publish_new_version: true, // Increment version on update
-          }),
+          body: JSON.stringify(updatePayload),
         });
 
         if (!response.ok) {
-          const data = await response.json();
-          throw new Error(data.error?.message || "Failed to update pattern");
+          const errorData = await response.json();
+          console.error("Update failed:", errorData);
+          throw new Error(errorData.error?.message || errorData.message || "Failed to update pattern");
         }
 
         setSuccess(`Pattern "${name}" updated successfully! New version created.`);
       } else {
         // Create new pattern (version 1)
+        // Prepare schema for new pattern
+        const newPatternSchema: Record<string, unknown> = {
+          name,
+          format,
+          instructions: originalInstructions || instructions,
+        };
+
+        // Add format-specific schema if template exists
+        if (template) {
+          const cleaned = cleanTemplate(template);
+
+          if (format === "json") {
+            newPatternSchema.json_schema = JSON.parse(cleaned);
+          }
+          // For other formats, we still need json_schema for backward compatibility
+          // But also add format-specific schema
+          try {
+            const parsedJson = JSON.parse(cleaned);
+            newPatternSchema.json_schema = parsedJson;
+          } catch {
+            // If template is not JSON, just use json_schema undefined
+            newPatternSchema.json_schema = undefined;
+          }
+        }
+
         const response = await fetch("/api/patterns", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({
-            name,
-            format,
-            instructions: originalInstructions || instructions, // Use original if follow-up was done
-            json_schema: jsonSchema ? JSON.parse(jsonSchema) : undefined,
-          }),
+          body: JSON.stringify(newPatternSchema),
         });
 
         if (!response.ok) {
@@ -666,7 +769,7 @@ export default function NewPatternPage() {
           <div className="space-y-6">
             {/* Pattern Selection */}
             <div>
-              <label className="block text-sm font-medium mb-2 flex items-center gap-2">
+              <label className="text-sm font-medium mb-2 flex items-center gap-2">
                 {selectedPatternId ? (
                   <>
                     <RefreshCw className="w-4 h-4" />
@@ -752,23 +855,37 @@ export default function NewPatternPage() {
               )}
             </div>
 
-            {/* Format Selection */}
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                Output Format
-              </label>
-              <select
-                value={format}
-                onChange={(e) => setFormat(e.target.value as ManifestFormat)}
-                className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-background"
-              >
-                <option value="json">JSON</option>
-                <option value="yaml">YAML</option>
-                <option value="xml">XML</option>
-                <option value="csv">CSV</option>
-                <option value="text">Plain Text</option>
-              </select>
-            </div>
+            {/* Format Selection - only show in create mode */}
+            {!selectedPatternId && (
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Output Format
+                </label>
+                <select
+                  value={format}
+                  onChange={(e) => setFormat(e.target.value as ManifestFormat)}
+                  className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-background"
+                >
+                  <option value="json">JSON</option>
+                  <option value="yaml">YAML</option>
+                  <option value="xml">XML</option>
+                  <option value="csv">CSV</option>
+                  <option value="text">Plain Text</option>
+                </select>
+              </div>
+            )}
+
+            {/* Show current format in update mode (read-only) */}
+            {selectedPatternId && (
+              <div className="bg-muted/50 border border-border rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-sm font-medium text-muted-foreground">Output Format</span>
+                </div>
+                <p className="text-sm uppercase font-semibold">
+                  {format}
+                </p>
+              </div>
+            )}
 
             {/* Original Instructions (shown in update mode) */}
             {originalInstructions && (

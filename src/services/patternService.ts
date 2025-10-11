@@ -199,7 +199,7 @@ export async function updatePattern(
 }
 
 /**
- * Delete (archive) pattern
+ * Delete pattern (hard delete)
  */
 export async function deletePattern(
   patternId: string,
@@ -220,13 +220,12 @@ export async function deletePattern(
       throw new Error("Pattern not found or access denied");
     }
 
-    // Soft delete by setting is_active = false
-    const { error } = await updateRowNoReturn(
-      supabaseServer,
-      "patterns",
-      { is_active: false },
-      { column: "id", value: patternId }
-    );
+    // Hard delete - permanently remove from database
+    const { error } = await supabaseServer
+      .from("patterns")
+      .delete()
+      .eq("id", patternId)
+      .eq("user_id", userId);
 
     if (error) {
       logger.error("Failed to delete pattern", error, { pattern_id: patternId });
@@ -246,28 +245,51 @@ export async function deletePattern(
 export async function publishPatternVersion(
   patternId: string,
   userId: string,
-  jsonSchema: Record<string, unknown> | null,
   instructions: string,
-  format: string
+  format: string,
+  schemas: {
+    json_schema?: Record<string, unknown> | null;
+    yaml_schema?: string | null;
+    xml_schema?: string | null;
+    csv_schema?: string | null;
+    plain_text_schema?: string | null;
+  }
 ): Promise<number> {
   try {
     logger.info("Publishing pattern version", {
       pattern_id: patternId,
       user_id: userId,
+      format,
     });
 
-    const { data, error } = await callRpc(supabaseServer, "publish_pattern_version", {
+    const rpcParams = {
       p_pattern_id: patternId,
-      p_json_schema: jsonSchema as Database["public"]["Functions"]["publish_pattern_version"]["Args"]["p_json_schema"],
+      p_user_id: userId,
       p_instructions: instructions,
       p_format: format,
+      p_json_schema: (schemas.json_schema || null) as Database["public"]["Functions"]["publish_pattern_version"]["Args"]["p_json_schema"],
+      p_yaml_schema: schemas.yaml_schema || null,
+      p_xml_schema: schemas.xml_schema || null,
+      p_csv_schema: schemas.csv_schema || null,
+      p_plain_text_schema: schemas.plain_text_schema || null,
+    };
+
+    logger.info("RPC parameters", {
+      pattern_id: patternId,
+      params: rpcParams
     });
 
+    const { data, error } = await callRpc(supabaseServer, "publish_pattern_version", rpcParams);
+
     if (error) {
-      logger.error("Failed to publish pattern version", error, {
+      logger.error("Failed to publish pattern version", {
         pattern_id: patternId,
+        error_message: error.message,
+        error_details: error.details,
+        error_hint: error.hint,
+        error_code: error.code,
       });
-      throw error;
+      throw new Error(`Failed to publish pattern version: ${error.message || JSON.stringify(error)}`);
     }
 
     if (data === null) {
@@ -283,6 +305,98 @@ export async function publishPatternVersion(
     return newVersion;
   } catch (error) {
     logger.error("Exception publishing pattern version", error);
+    throw error;
+  }
+}
+
+/**
+ * Get all versions of a pattern
+ */
+export async function getPatternVersions(
+  patternId: string,
+  userId: string
+): Promise<Array<{
+  version: number;
+  json_schema: Record<string, unknown> | null;
+  yaml_schema: string | null;
+  xml_schema: string | null;
+  csv_schema: string | null;
+  plain_text_schema: string | null;
+  instructions: string;
+  format: string;
+  created_at: string;
+}>> {
+  try {
+    // Verify ownership first
+    const { data: existingPattern } = await supabaseServer
+      .from("patterns")
+      .select("id")
+      .eq("id", patternId)
+      .eq("user_id", userId)
+      .single();
+
+    if (!existingPattern) {
+      throw new Error("Pattern not found or access denied");
+    }
+
+    // Get all versions ordered by version number descending (newest first)
+    const { data, error } = await supabaseServer
+      .from("pattern_versions")
+      .select("version, json_schema, yaml_schema, xml_schema, csv_schema, plain_text_schema, instructions, format, created_at")
+      .eq("pattern_id", patternId)
+      .order("version", { ascending: false });
+
+    if (error) {
+      logger.error("Failed to get pattern versions", error, { pattern_id: patternId });
+      throw error;
+    }
+
+    return data || [];
+  } catch (error) {
+    logger.error("Exception getting pattern versions", error);
+    throw error;
+  }
+}
+
+/**
+ * Switch to a specific pattern version
+ */
+export async function switchToPatternVersion(
+  patternId: string,
+  userId: string,
+  targetVersion: number
+): Promise<void> {
+  try {
+    logger.info("Switching to pattern version", {
+      pattern_id: patternId,
+      user_id: userId,
+      target_version: targetVersion,
+    });
+
+    const { error } = await callRpc(supabaseServer, "switch_to_pattern_version", {
+      p_pattern_id: patternId,
+      p_user_id: userId,
+      p_target_version: targetVersion,
+    });
+
+    if (error) {
+      logger.error("Failed to switch pattern version", {
+        pattern_id: patternId,
+        target_version: targetVersion,
+        error_message: error.message,
+        error_details: error.details,
+        error_hint: error.hint,
+        error_code: error.code,
+      });
+      throw new Error(`Failed to switch pattern version: ${error.message || JSON.stringify(error)}`);
+    }
+
+    logger.info("Pattern version switched", {
+      pattern_id: patternId,
+      version: targetVersion,
+    });
+  } catch (error) {
+    logger.error("Exception switching pattern version", error);
     throw error;
   }
 }

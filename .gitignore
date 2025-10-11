@@ -60,6 +60,9 @@ db/migrations/
 # Misc
 SETUP_GUIDE.md
 QUICK_START.md
+TESTING_UPLOAD_FEATURE.md
+UPLOAD_FEATURE_SUMMARY.md
+upload-flow.md
 README.md
 supabase/
 supabase
@@ -67,3 +70,5 @@ test-photos/
 .claude/
 .vscode/
 nul
+*.md
+docs/*.md

@@ -21,6 +21,10 @@ import {
   XCircle,
   Image as ImageIcon,
   Download,
+  Edit3,
+  Eye,
+  History,
+  ChevronDown,
 } from "lucide-react";
 
 interface Pattern {
@@ -29,6 +33,10 @@ interface Pattern {
   format: string;
   instructions: string;
   json_schema: Record<string, unknown> | null;
+  yaml_schema?: string | null;
+  xml_schema?: string | null;
+  csv_schema?: string | null;
+  plain_text_schema?: string | null;
   is_active: boolean;
   version: number;
   created_at: string;
@@ -45,6 +53,18 @@ interface Job {
   latency_ms: number | null;
 }
 
+interface PatternVersion {
+  version: number;
+  json_schema: Record<string, unknown> | null;
+  yaml_schema: string | null;
+  xml_schema: string | null;
+  csv_schema: string | null;
+  plain_text_schema: string | null;
+  instructions: string;
+  format: string;
+  created_at: string;
+}
+
 export default function PatternDetailPage() {
   const params = useParams();
   const { session } = useAuth();
@@ -52,6 +72,9 @@ export default function PatternDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [copiedItem, setCopiedItem] = useState<string | null>(null);
+  const [versions, setVersions] = useState<PatternVersion[]>([]);
+  const [showVersionDropdown, setShowVersionDropdown] = useState(false);
+  const [isSwitchingVersion, setIsSwitchingVersion] = useState(false);
 
   // Upload state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -96,6 +119,30 @@ export default function PatternDetailPage() {
     fetchPattern();
   }, [session, patternId]);
 
+  // Fetch versions
+  useEffect(() => {
+    if (!session?.access_token || !patternId) return;
+
+    const fetchVersions = async () => {
+      try {
+        const response = await fetch(`/api/patterns/${patternId}/versions`, {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          setVersions(result.data.versions);
+        }
+      } catch (err) {
+        console.error("Failed to fetch versions:", err);
+      }
+    };
+
+    fetchVersions();
+  }, [session, patternId]);
+
   // Cleanup polling on unmount
   useEffect(() => {
     return () => {
@@ -109,6 +156,46 @@ export default function PatternDetailPage() {
     navigator.clipboard.writeText(text);
     setCopiedItem(item);
     setTimeout(() => setCopiedItem(null), 2000);
+  };
+
+  const handleSwitchVersion = async (targetVersion: number) => {
+    if (!session?.access_token || !patternId) return;
+
+    setIsSwitchingVersion(true);
+    setShowVersionDropdown(false);
+
+    try {
+      const response = await fetch(`/api/patterns/${patternId}/versions/switch`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ version: targetVersion }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setPattern(result.data.pattern);
+        // Refresh versions
+        const versionsResponse = await fetch(`/api/patterns/${patternId}/versions`, {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
+        if (versionsResponse.ok) {
+          const versionsResult = await versionsResponse.json();
+          setVersions(versionsResult.data.versions);
+        }
+      } else {
+        setError("Failed to switch version");
+      }
+    } catch (err) {
+      console.error("Failed to switch version:", err);
+      setError("Failed to switch version");
+    } finally {
+      setIsSwitchingVersion(false);
+    }
   };
 
   // Helper to sanitize file names for storage
@@ -447,13 +534,60 @@ print(result)`
                 )}
               </div>
             </div>
-            <Link
-              href={`/patterns/new?pattern_id=${pattern.id}`}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition flex items-center gap-2"
-            >
-              <Edit3 className="w-4 h-4" />
-              Create New Version
-            </Link>
+            <div className="flex items-center gap-2">
+              {/* Version History Dropdown */}
+              {versions.length > 1 && (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowVersionDropdown(!showVersionDropdown)}
+                    className="px-4 py-2 border border-border rounded-lg hover:bg-accent transition flex items-center gap-2"
+                    disabled={isSwitchingVersion}
+                  >
+                    <History className="w-4 h-4" />
+                    <ChevronDown className="w-4 h-4" />
+                  </button>
+                  {showVersionDropdown && (
+                    <div className="absolute right-0 mt-2 w-64 bg-background border border-border rounded-lg shadow-lg z-10">
+                      <div className="p-2">
+                        <div className="text-xs font-medium text-muted-foreground px-2 py-1 mb-1">
+                          Version History
+                        </div>
+                        {versions.map((v) => (
+                          <button
+                            key={v.version}
+                            onClick={() => handleSwitchVersion(v.version)}
+                            disabled={v.version === pattern.version || isSwitchingVersion}
+                            className={`w-full text-left px-3 py-2 text-sm rounded hover:bg-accent transition flex items-center justify-between ${
+                              v.version === pattern.version
+                                ? "bg-accent font-medium"
+                                : ""
+                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <Hash className="w-3 h-3" />
+                              <span>Version {v.version}</span>
+                              {v.version === pattern.version && (
+                                <CheckCircle className="w-3 h-3 text-green-600" />
+                              )}
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(v.created_at).toLocaleDateString()}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+              <Link
+                href={`/patterns/new?pattern_id=${pattern.id}`}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition flex items-center gap-2"
+              >
+                <Edit3 className="w-4 h-4" />
+                Create New Version
+              </Link>
+            </div>
           </div>
 
           {/* Endpoint Section */}
@@ -502,6 +636,52 @@ print(result)`
               </pre>
             </div>
           )}
+
+          {/* Pattern Schema Preview */}
+          {(() => {
+            let schemaContent = "";
+            if (pattern.format === "json" && pattern.json_schema) {
+              schemaContent = JSON.stringify(pattern.json_schema, null, 2);
+            } else if (pattern.format === "yaml" && pattern.yaml_schema) {
+              schemaContent = pattern.yaml_schema;
+            } else if (pattern.format === "xml" && pattern.xml_schema) {
+              schemaContent = pattern.xml_schema;
+            } else if (pattern.format === "csv" && pattern.csv_schema) {
+              schemaContent = pattern.csv_schema;
+            } else if (pattern.format === "text" && pattern.plain_text_schema) {
+              schemaContent = pattern.plain_text_schema;
+            }
+
+            return schemaContent ? (
+              <div className="border border-border rounded-lg p-6 mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-semibold flex items-center gap-2">
+                    <Eye className="w-5 h-5" />
+                    Pattern Example ({pattern.format.toUpperCase()})
+                  </h2>
+                  <button
+                    onClick={() => copyToClipboard(schemaContent, "schema")}
+                    className="text-sm text-primary hover:underline flex items-center gap-1"
+                  >
+                    {copiedItem === "schema" ? (
+                      <>
+                        <CheckCircle className="w-4 h-4" />
+                        Copied
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-4 h-4" />
+                        Copy
+                      </>
+                    )}
+                  </button>
+                </div>
+                <pre className="bg-muted p-4 rounded-lg text-xs overflow-x-auto whitespace-pre-wrap">
+                  {schemaContent}
+                </pre>
+              </div>
+            ) : null;
+          })()}
 
           {/* Code Examples */}
           <div className="border border-border rounded-lg p-6 mb-6">

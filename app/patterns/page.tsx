@@ -23,6 +23,7 @@ interface Pattern {
   format: string;
   instructions: string;
   is_active: boolean;
+  version: number;
   created_at: string;
   endpoint_url: string;
 }
@@ -241,6 +242,9 @@ export default function PatternsPage() {
                           <h3 className="font-medium">{pattern.name}</h3>
                           <span className="text-xs px-2 py-0.5 bg-muted rounded uppercase">
                             {pattern.format}
+                          </span>
+                          <span className="text-xs px-2 py-0.5 bg-muted/50 rounded text-muted-foreground">
+                            v{pattern.version}
                           </span>
                           {pattern.is_active && (
                             <span className="text-xs px-2 py-0.5 bg-green-500/10 text-green-600 rounded flex items-center gap-1">

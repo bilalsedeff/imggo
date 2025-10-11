@@ -65,9 +65,14 @@ export async function parseBody<T>(
 ): Promise<T> {
   try {
     const body = await request.json();
+    logger.info("Request body received", { body });
     return schema.parse(body);
   } catch (error) {
     if (error instanceof ZodError) {
+      logger.error("Zod validation failed", {
+        errors: error.errors,
+        fieldErrors: error.flatten().fieldErrors,
+      });
       throw new ApiError(
         "Validation error",
         400,
@@ -149,6 +154,7 @@ export function errorResponse(
       request_id: requestId,
       code: error.code,
       message: error.message,
+      details: error.details,
     });
 
     return NextResponse.json(response, {

@@ -76,12 +76,34 @@ export const PATCH = withErrorHandling(
         throw new ApiError("Instructions and format are required for publishing a new version", 400);
       }
 
+      // Prepare schemas object based on format
+      const schemas: {
+        json_schema?: Record<string, unknown> | null;
+        yaml_schema?: string | null;
+        xml_schema?: string | null;
+        csv_schema?: string | null;
+        plain_text_schema?: string | null;
+      } = {};
+
+      // Set the appropriate schema based on format
+      if (input.format === "json") {
+        schemas.json_schema = input.json_schema || null;
+      } else if (input.format === "yaml") {
+        schemas.yaml_schema = input.yaml_schema || null;
+      } else if (input.format === "xml") {
+        schemas.xml_schema = input.xml_schema || null;
+      } else if (input.format === "csv") {
+        schemas.csv_schema = input.csv_schema || null;
+      } else if (input.format === "text") {
+        schemas.plain_text_schema = input.plain_text_schema || null;
+      }
+
       newVersion = await patternService.publishPatternVersion(
         id,
         user.userId,
-        input.json_schema || null,
         input.instructions,
-        input.format
+        input.format,
+        schemas
       );
 
       // Fetch updated pattern
