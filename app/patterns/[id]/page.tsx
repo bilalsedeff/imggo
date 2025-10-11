@@ -87,6 +87,9 @@ export default function PatternDetailPage() {
   const [currentJob, setCurrentJob] = useState<Job | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Ref for version dropdown
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
   const patternId = params?.id as string;
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
@@ -151,6 +154,22 @@ export default function PatternDetailPage() {
       }
     };
   }, []);
+
+  // Click outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowVersionDropdown(false);
+      }
+    };
+
+    if (showVersionDropdown) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+      };
+    }
+  }, [showVersionDropdown]);
 
   const copyToClipboard = (text: string, item: string) => {
     navigator.clipboard.writeText(text);
@@ -537,7 +556,7 @@ print(result)`
             <div className="flex items-center gap-2">
               {/* Version History Dropdown */}
               {versions.length > 1 && (
-                <div className="relative">
+                <div className="relative" ref={dropdownRef}>
                   <button
                     onClick={() => setShowVersionDropdown(!showVersionDropdown)}
                     className="px-4 py-2 border border-border rounded-lg hover:bg-accent transition flex items-center gap-2"

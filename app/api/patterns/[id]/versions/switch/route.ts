@@ -30,7 +30,18 @@ async function handlePost(
   // Fetch the updated pattern
   const pattern = await patternService.getPattern(id, user.userId);
 
-  return successResponse({ pattern, message: `Switched to version ${input.version}` });
+  if (!pattern) {
+    throw new Error("Pattern not found after version switch");
+  }
+
+  // Add endpoint_url
+  const BASE_URL = process.env.APP_BASE_URL || "http://localhost:3000";
+  const patternWithEndpoint = {
+    ...pattern,
+    endpoint_url: `${BASE_URL}/api/patterns/${pattern.id}/ingest`,
+  };
+
+  return successResponse({ pattern: patternWithEndpoint, message: `Switched to version ${input.version}` });
 }
 
 export const POST = withErrorHandling(handlePost);
