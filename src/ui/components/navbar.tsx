@@ -50,6 +50,12 @@ export function Navbar() {
           >
             Patterns
           </Link>
+          <Link
+            href="/logs"
+            className="text-sm font-medium text-muted-foreground hover:text-foreground transition"
+          >
+            Logs
+          </Link>
 
           {/* Profile Dropdown */}
           {session && (

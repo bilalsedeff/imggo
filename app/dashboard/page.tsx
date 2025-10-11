@@ -13,6 +13,8 @@ import {
   Clock,
   AlertCircle,
   Loader2,
+  Search,
+  Activity,
 } from "lucide-react";
 
 interface Metrics {
@@ -30,24 +32,24 @@ interface Pattern {
   is_active: boolean;
 }
 
-interface Job {
-  id: string;
+interface PatternStat {
   pattern_id: string;
-  status: "queued" | "running" | "succeeded" | "failed";
-  created_at: string;
-  patterns: {
-    name: string;
-    format: string;
-  };
+  pattern_name: string;
+  pattern_format: string;
+  total_jobs_24h: number;
+  successful_jobs_24h: number;
+  success_rate: number;
+  last_job_at: string;
 }
 
 export default function DashboardPage() {
   const { session } = useAuth();
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [activePatterns, setActivePatterns] = useState<Pattern[]>([]);
-  const [recentJobs, setRecentJobs] = useState<Job[]>([]);
+  const [patternStats, setPatternStats] = useState<PatternStat[]>([]);
   const [isLoadingMetrics, setIsLoadingMetrics] = useState(false);
-  const [isLoadingJobs, setIsLoadingJobs] = useState(false);
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     if (!session?.access_token) return;
@@ -89,10 +91,10 @@ export default function DashboardPage() {
       }
     };
 
-    const fetchRecentJobs = async () => {
-      setIsLoadingJobs(true);
+    const fetchPatternStats = async () => {
+      setIsLoadingStats(true);
       try {
-        const response = await fetch("/api/jobs?per_page=10", {
+        const response = await fetch("/api/dashboard/pattern-stats", {
           headers: {
             Authorization: `Bearer ${session.access_token}`,
           },
@@ -100,49 +102,32 @@ export default function DashboardPage() {
 
         if (response.ok) {
           const result = await response.json();
-          setRecentJobs(result.data?.data || []);
+          setPatternStats(result.data?.stats || []);
         }
       } catch (err) {
-        console.error("Failed to fetch recent jobs:", err);
+        console.error("Failed to fetch pattern stats:", err);
       } finally {
-        setIsLoadingJobs(false);
+        setIsLoadingStats(false);
       }
     };
 
     fetchMetrics();
     fetchActivePatterns();
-    fetchRecentJobs();
+    fetchPatternStats();
   }, [session]);
 
-  const getStatusColor = (status: Job["status"]) => {
-    switch (status) {
-      case "succeeded":
-        return "text-green-600 bg-green-500/10";
-      case "failed":
-        return "text-red-600 bg-red-500/10";
-      case "running":
-        return "text-blue-600 bg-blue-500/10";
-      case "queued":
-        return "text-yellow-600 bg-yellow-500/10";
-      default:
-        return "text-muted-foreground bg-muted";
-    }
+  // Success rate color: green at 100%, transitions to red as it decreases
+  const getSuccessRateColor = (rate: number) => {
+    if (rate >= 95) return "text-green-600";
+    if (rate >= 80) return "text-yellow-600";
+    if (rate >= 50) return "text-orange-600";
+    return "text-red-600";
   };
 
-  const getStatusIcon = (status: Job["status"]) => {
-    switch (status) {
-      case "succeeded":
-        return <CheckCircle2 className="w-3 h-3" />;
-      case "failed":
-        return <AlertCircle className="w-3 h-3" />;
-      case "running":
-        return <Loader2 className="w-3 h-3 animate-spin" />;
-      case "queued":
-        return <Clock className="w-3 h-3" />;
-      default:
-        return null;
-    }
-  };
+  // Filter active patterns by search query
+  const filteredPatterns = activePatterns.filter((pattern) =>
+    pattern.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <div className="min-h-screen">
@@ -222,13 +207,28 @@ export default function DashboardPage() {
                   View all
                 </Link>
               </div>
-              {activePatterns.length === 0 ? (
+
+              {/* Search Bar */}
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Search patterns..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
+                />
+              </div>
+
+              {filteredPatterns.length === 0 ? (
                 <p className="text-muted-foreground text-sm">
-                  No active patterns. Create and publish a pattern to get started.
+                  {activePatterns.length === 0
+                    ? "No active patterns. Create and publish a pattern to get started."
+                    : "No patterns match your search."}
                 </p>
               ) : (
                 <div className="space-y-3">
-                  {activePatterns.map((pattern) => (
+                  {filteredPatterns.map((pattern) => (
                     <Link
                       key={pattern.id}
                       href={`/patterns/${pattern.id}`}
@@ -247,41 +247,58 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* Recent Jobs */}
+            {/* Pattern Job Stats (Last 24h) */}
             <div className="border border-border rounded-lg p-6">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold">Recent Jobs</h2>
+                <h2 className="text-xl font-semibold">Recent Activity (24h)</h2>
+                <Link
+                  href="/logs"
+                  className="text-sm text-primary hover:underline"
+                >
+                  View logs
+                </Link>
               </div>
-              {isLoadingJobs ? (
-                <p className="text-muted-foreground text-sm">Loading jobs...</p>
-              ) : recentJobs.length === 0 ? (
+              {isLoadingStats ? (
+                <p className="text-muted-foreground text-sm">Loading activity...</p>
+              ) : patternStats.length === 0 ? (
                 <p className="text-muted-foreground text-sm">
-                  No jobs yet. Upload images to your patterns to see processing history.
+                  No jobs in the last 24 hours. Upload images to your patterns to see activity.
                 </p>
               ) : (
                 <div className="space-y-3">
-                  {recentJobs.map((job) => (
-                    <div
-                      key={job.id}
-                      className="p-3 border border-border rounded-lg"
+                  {patternStats.map((stat) => (
+                    <Link
+                      key={stat.pattern_id}
+                      href={`/logs?pattern_id=${stat.pattern_id}`}
+                      className="block p-4 border border-border rounded-lg hover:bg-accent transition"
                     >
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex-1">
-                          <p className="font-medium text-sm">{job.patterns.name}</p>
+                          <div className="flex items-center gap-2 mb-1">
+                            <Activity className="w-4 h-4 text-muted-foreground" />
+                            <span className="font-medium">{stat.pattern_name}</span>
+                            <span className="text-xs px-2 py-0.5 bg-muted rounded uppercase">
+                              {stat.pattern_format}
+                            </span>
+                          </div>
                           <p className="text-xs text-muted-foreground">
-                            {new Date(job.created_at).toLocaleString()}
+                            {stat.successful_jobs_24h}/{stat.total_jobs_24h} successful
                           </p>
                         </div>
-                        <span
-                          className={`text-xs px-2 py-0.5 rounded flex items-center gap-1 ${getStatusColor(
-                            job.status
-                          )}`}
-                        >
-                          {getStatusIcon(job.status)}
-                          {job.status}
-                        </span>
+                        <div className="text-right">
+                          <p
+                            className={`text-2xl font-bold ${getSuccessRateColor(
+                              stat.success_rate
+                            )}`}
+                          >
+                            {stat.success_rate}%
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            success rate
+                          </p>
+                        </div>
                       </div>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               )}
