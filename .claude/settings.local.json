@@ -21,7 +21,8 @@
       "Bash(git push:*)",
       "Bash(curl:*)",
       "Bash(npm run build:*)",
-      "Bash(supabase:*)"
+      "Bash(supabase:*)",
+      "Bash(npm install:*)"
     ],
     "deny": [],
     "ask": []

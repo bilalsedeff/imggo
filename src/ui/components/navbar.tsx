@@ -2,11 +2,15 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useTheme } from "next-themes";
 import { useAuth } from "@/providers/auth-provider";
-import { User, LogOut, ChevronDown } from "lucide-react";
+import { User, LogOut, ChevronDown, Moon, Sun } from "lucide-react";
 
 export function Navbar() {
   const { user, session, signOut } = useAuth();
+  const pathname = usePathname();
+  const { theme, setTheme } = useTheme();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -40,19 +44,31 @@ export function Navbar() {
         <nav className="flex items-center gap-6">
           <Link
             href="/dashboard"
-            className="text-sm font-medium text-muted-foreground hover:text-foreground transition"
+            className={`text-sm font-medium transition px-3 py-1.5 rounded-md ${
+              pathname === "/dashboard"
+                ? "text-foreground bg-accent/50 shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
           >
             Dashboard
           </Link>
           <Link
             href="/patterns"
-            className="text-sm font-medium text-muted-foreground hover:text-foreground transition"
+            className={`text-sm font-medium transition px-3 py-1.5 rounded-md ${
+              pathname?.startsWith("/patterns")
+                ? "text-foreground bg-accent/50 shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
           >
             Patterns
           </Link>
           <Link
             href="/logs"
-            className="text-sm font-medium text-muted-foreground hover:text-foreground transition"
+            className={`text-sm font-medium transition px-3 py-1.5 rounded-md ${
+              pathname === "/logs"
+                ? "text-foreground bg-accent/50 shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
           >
             Logs
           </Link>
@@ -86,6 +102,22 @@ export function Navbar() {
                       {user?.user_metadata?.full_name || "User"}
                     </p>
                   </div>
+
+                  <button
+                    onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                    className="w-full flex items-center justify-between px-4 py-2 text-sm text-left hover:bg-accent transition"
+                  >
+                    <div className="flex items-center gap-2">
+                      {theme === "dark" ? (
+                        <Sun className="w-4 h-4" />
+                      ) : (
+                        <Moon className="w-4 h-4" />
+                      )}
+                      <span>
+                        {theme === "dark" ? "Light Mode" : "Dark Mode"}
+                      </span>
+                    </div>
+                  </button>
 
                   <button
                     onClick={handleSignOut}

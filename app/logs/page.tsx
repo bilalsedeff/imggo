@@ -13,6 +13,7 @@ import {
   Filter,
   ChevronLeft,
   ChevronRight,
+  RefreshCw,
 } from "lucide-react";
 
 interface Job {
@@ -79,40 +80,40 @@ export default function LogsPage() {
     fetchPatterns();
   }, [session]);
 
-  useEffect(() => {
+  const fetchJobs = async () => {
     if (!session?.access_token) return;
 
-    const fetchJobs = async () => {
-      setIsLoading(true);
-      try {
-        const params = new URLSearchParams({
-          time_range: timeRange,
-          page: page.toString(),
-          per_page: "50",
-        });
+    setIsLoading(true);
+    try {
+      const params = new URLSearchParams({
+        time_range: timeRange,
+        page: page.toString(),
+        per_page: "50",
+      });
 
-        if (selectedPatternId) params.append("pattern_id", selectedPatternId);
-        if (selectedStatus) params.append("status", selectedStatus);
+      if (selectedPatternId) params.append("pattern_id", selectedPatternId);
+      if (selectedStatus) params.append("status", selectedStatus);
 
-        const response = await fetch(`/api/logs?${params.toString()}`, {
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-          },
-        });
+      const response = await fetch(`/api/logs?${params.toString()}`, {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
 
-        if (response.ok) {
-          const result = await response.json();
-          setJobs(result.data?.data || []);
-          setTotalPages(result.data?.pagination?.total_pages || 1);
-          setTotalJobs(result.data?.pagination?.total || 0);
-        }
-      } catch (err) {
-        console.error("Failed to fetch jobs:", err);
-      } finally {
-        setIsLoading(false);
+      if (response.ok) {
+        const result = await response.json();
+        setJobs(result.data?.data || []);
+        setTotalPages(result.data?.pagination?.total_pages || 1);
+        setTotalJobs(result.data?.pagination?.total || 0);
       }
-    };
+    } catch (err) {
+      console.error("Failed to fetch jobs:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchJobs();
   }, [session, timeRange, selectedPatternId, selectedStatus, page]);
 
@@ -158,6 +159,14 @@ export default function LogsPage() {
                 {totalJobs} total jobs
               </p>
             </div>
+            <button
+              onClick={fetchJobs}
+              disabled={isLoading}
+              className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg hover:bg-accent transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
+              <span className="text-sm font-medium">Refresh</span>
+            </button>
           </div>
 
           {/* Filters */}
@@ -184,6 +193,8 @@ export default function LogsPage() {
                   <option value="1m">Last 1 minute</option>
                   <option value="15m">Last 15 minutes</option>
                   <option value="1h">Last 1 hour</option>
+                  <option value="6h">Last 6 hours</option>
+                  <option value="12h">Last 12 hours</option>
                   <option value="24h">Last 24 hours</option>
                   <option value="all">All time</option>
                 </select>

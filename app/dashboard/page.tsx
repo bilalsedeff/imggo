@@ -124,6 +124,26 @@ export default function DashboardPage() {
     return "text-red-600";
   };
 
+  // Format time ago: Xm for minutes, Xh for hours (rounded)
+  const formatTimeAgo = (timestamp: string) => {
+    const now = Date.now();
+    const then = new Date(timestamp).getTime();
+    const diffMs = now - then;
+    const diffMinutes = Math.floor(diffMs / (60 * 1000));
+
+    if (diffMinutes < 60) {
+      return `${diffMinutes}m`;
+    }
+
+    // Convert to hours with rounding
+    // If minutes >= 30, round up, else round down
+    const hours = Math.floor(diffMinutes / 60);
+    const remainingMinutes = diffMinutes % 60;
+    const roundedHours = remainingMinutes >= 30 ? hours + 1 : hours;
+
+    return `${roundedHours}h`;
+  };
+
   // Filter active patterns by search query
   const filteredPatterns = activePatterns.filter((pattern) =>
     pattern.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -298,6 +318,9 @@ export default function DashboardPage() {
                           </p>
                         </div>
                       </div>
+                      <p className="text-xs text-muted-foreground">
+                        last job run: {formatTimeAgo(stat.last_job_at)} ago
+                      </p>
                     </Link>
                   ))}
                 </div>

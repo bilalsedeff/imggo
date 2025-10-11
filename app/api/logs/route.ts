@@ -14,7 +14,7 @@ import {
 import { supabaseServer } from "@/lib/supabase-server";
 
 const LogsQuerySchema = z.object({
-  time_range: z.enum(["1m", "15m", "1h", "24h", "all"]).optional().default("24h"),
+  time_range: z.enum(["1m", "15m", "1h", "6h", "12h", "24h", "all"]).optional().default("24h"),
   pattern_id: z.string().uuid().optional(),
   status: z.enum(["queued", "running", "succeeded", "failed"]).optional(),
   page: z.coerce.number().int().positive().optional().default(1),
@@ -26,6 +26,8 @@ const TIME_RANGE_MS: Record<string, number> = {
   "1m": 1 * 60 * 1000,
   "15m": 15 * 60 * 1000,
   "1h": 60 * 60 * 1000,
+  "6h": 6 * 60 * 60 * 1000,
+  "12h": 12 * 60 * 60 * 1000,
   "24h": 24 * 60 * 60 * 1000,
   "all": 100 * 365 * 24 * 60 * 60 * 1000, // Effectively all records
 };
