@@ -21,13 +21,13 @@ const LogsQuerySchema = z.object({
   per_page: z.coerce.number().int().min(1).max(100).optional().default(50),
 });
 
-// Time range to PostgreSQL interval mapping
-const TIME_RANGE_MAP: Record<string, string> = {
-  "1m": "1 minute",
-  "15m": "15 minutes",
-  "1h": "1 hour",
-  "24h": "24 hours",
-  "all": "100 years", // Effectively all records
+// Time range to milliseconds mapping
+const TIME_RANGE_MS: Record<string, number> = {
+  "1m": 1 * 60 * 1000,
+  "15m": 15 * 60 * 1000,
+  "1h": 60 * 60 * 1000,
+  "24h": 24 * 60 * 60 * 1000,
+  "all": 100 * 365 * 24 * 60 * 60 * 1000, // Effectively all records
 };
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
@@ -65,11 +65,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   // Apply time range filter
   if (query.time_range !== "all") {
-    const interval = TIME_RANGE_MAP[query.time_range];
-    queryBuilder = queryBuilder.gte(
-      "created_at",
-      `now() - interval '${interval}'`
-    );
+    const msAgo = TIME_RANGE_MS[query.time_range];
+    const timestamp = new Date(Date.now() - msAgo).toISOString();
+    queryBuilder = queryBuilder.gte("created_at", timestamp);
   }
 
   // Apply pattern filter

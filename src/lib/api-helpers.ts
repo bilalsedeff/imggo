@@ -167,8 +167,13 @@ export function errorResponse(
   const message =
     error instanceof Error ? error.message : "Internal server error";
 
-  logger.error("Unexpected API error", error, {
+  logger.error("Unexpected API error", {
     request_id: requestId,
+    error: error instanceof Error ? {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+    } : String(error),
   });
 
   const response: ErrorResponse = {
