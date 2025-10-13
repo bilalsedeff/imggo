@@ -15,8 +15,12 @@ import {
 import { IngestRequestSchema } from "@/schemas/manifest";
 import * as patternService from "@/services/patternService";
 import * as jobService from "@/services/jobService";
+import { processImage } from "@/services/imageProcessingService";
 import { logger } from "@/lib/logger";
 import { checkRateLimitOrFail } from "@/middleware/rateLimit";
+
+// Configure Vercel function timeout (Pro: 30s max)
+export const maxDuration = 30;
 
 export const POST = withErrorHandling(
   async (
@@ -67,8 +71,8 @@ export const POST = withErrorHandling(
       }
     }
 
-    // Create and enqueue job
-    const { jobId, status } = await jobService.createJob({
+    // Create job record first (status: 'queued')
+    const { jobId } = await jobService.createJobRecord({
       patternId: pattern.id,
       imageUrl: input.image_url,
       userId: user.userId,
@@ -76,13 +80,77 @@ export const POST = withErrorHandling(
       extras: input.extras,
     });
 
-    return successResponse(
-      {
+    logger.info("Job created, attempting direct processing", {
+      job_id: jobId,
+      pattern_id: pattern.id,
+    });
+
+    // 🚀 HYBRID APPROACH: Try direct processing first (25s timeout)
+    try {
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("PROCESSING_TIMEOUT")), 25000)
+      );
+
+      const processingPromise = processImage({
+        jobId,
+        patternId: pattern.id,
+        imageUrl: input.image_url,
+        userId: user.userId,
+      });
+
+      const result = await Promise.race([processingPromise, timeoutPromise]);
+
+      if (result.success && result.manifest) {
+        // ⚡ SUCCESS! Return instant response (90% of cases)
+        logger.info("Direct processing succeeded", {
+          job_id: jobId,
+          latency_ms: result.latencyMs,
+          approach: "direct",
+        });
+
+        return successResponse(
+          {
+            job_id: jobId,
+            status: "succeeded",
+            manifest: result.manifest,
+            latency_ms: result.latencyMs,
+            approach: "direct", // Indicate this was processed instantly
+          },
+          200 // 200 OK - instant response!
+        );
+      } else {
+        throw new Error(result.error || "Processing failed");
+      }
+    } catch (error) {
+      // FALLBACK: Enqueue to PGMQ for worker processing
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      const isTimeout = errorMsg === "PROCESSING_TIMEOUT";
+
+      logger.warn("Direct processing failed, falling back to queue", {
         job_id: jobId,
-        status,
-        message: "Job queued successfully",
-      },
-      202
-    );
+        reason: isTimeout ? "timeout" : "error",
+        error: errorMsg,
+      });
+
+      // Enqueue job for background processing
+      await jobService.enqueueExistingJob(jobId, {
+        job_id: jobId,
+        pattern_id: pattern.id,
+        image_url: input.image_url,
+        extras: input.extras,
+      });
+
+      // Return 202 - client should poll
+      return successResponse(
+        {
+          job_id: jobId,
+          status: "queued",
+          message: "Job queued for background processing",
+          approach: "queued",
+          reason: isTimeout ? "Processing timeout, moved to queue" : "Processing error, moved to queue",
+        },
+        202
+      );
+    }
   }
 );

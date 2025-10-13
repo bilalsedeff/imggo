@@ -10,25 +10,24 @@ import { Job, JobStatus } from "@/schemas/manifest";
 import { enqueueJob, QueueJobPayload } from "@/queues/pgmq";
 
 /**
- * Create and enqueue a new job
+ * Create job record only (without enqueueing) - used by hybrid approach
  */
-export async function createJob(params: {
+export async function createJobRecord(params: {
   patternId: string;
   imageUrl: string;
   userId: string;
   idempotencyKey?: string;
   extras?: Record<string, unknown>;
-}): Promise<{ jobId: string; status: JobStatus }> {
+}): Promise<{ jobId: string }> {
   const { patternId, imageUrl, userId, idempotencyKey, extras } = params;
 
   try {
-    logger.info("Creating job", {
+    logger.info("Creating job record", {
       pattern_id: patternId,
       user_id: userId,
       idempotency_key: idempotencyKey,
     });
 
-    // Create job record
     type JobInsert = Database["public"]["Tables"]["jobs"]["Insert"];
 
     const jobData: JobInsert = {
@@ -54,15 +53,24 @@ export async function createJob(params: {
       throw new Error("No data returned from job creation");
     }
 
-    const jobId = data.id;
+    logger.info("Job record created", { job_id: data.id });
 
-    // Enqueue job for processing
-    const queuePayload: QueueJobPayload = {
-      job_id: jobId,
-      pattern_id: patternId,
-      image_url: imageUrl,
-      extras,
-    };
+    return { jobId: data.id };
+  } catch (error) {
+    logger.error("Exception creating job record", error);
+    throw error;
+  }
+}
+
+/**
+ * Enqueue an existing job to PGMQ - used by hybrid approach fallback
+ */
+export async function enqueueExistingJob(
+  jobId: string,
+  queuePayload: QueueJobPayload
+): Promise<void> {
+  try {
+    logger.info("Enqueueing existing job", { job_id: jobId });
 
     const enqueueResult = await enqueueJob(queuePayload);
 
@@ -79,19 +87,41 @@ export async function createJob(params: {
       throw new Error(`Failed to enqueue job: ${enqueueResult.error}`);
     }
 
-    logger.info("Job created and enqueued", {
+    logger.info("Job enqueued successfully", {
       job_id: jobId,
       msg_id: enqueueResult.msg_id,
     });
-
-    return {
-      jobId,
-      status: "queued" as JobStatus,
-    };
   } catch (error) {
-    logger.error("Exception creating job", error);
+    logger.error("Exception enqueueing job", error, { job_id: jobId });
     throw error;
   }
+}
+
+/**
+ * Create and enqueue a new job (legacy/backwards compatibility)
+ */
+export async function createJob(params: {
+  patternId: string;
+  imageUrl: string;
+  userId: string;
+  idempotencyKey?: string;
+  extras?: Record<string, unknown>;
+}): Promise<{ jobId: string; status: JobStatus }> {
+  const { jobId } = await createJobRecord(params);
+
+  const queuePayload: QueueJobPayload = {
+    job_id: jobId,
+    pattern_id: params.patternId,
+    image_url: params.imageUrl,
+    extras: params.extras,
+  };
+
+  await enqueueExistingJob(jobId, queuePayload);
+
+  return {
+    jobId,
+    status: "queued" as JobStatus,
+  };
 }
 
 /**
