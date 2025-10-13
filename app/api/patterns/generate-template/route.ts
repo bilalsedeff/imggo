@@ -12,6 +12,7 @@ export async function POST(request: NextRequest) {
     const {
       instructions,
       format,
+      csvDelimiter,
       jsonSchema,
       original_instructions,
       current_template,
@@ -78,7 +79,8 @@ Please modify the current template according to the follow-up request while main
     const template = await generateTemplate(
       promptToUse,
       format as "json" | "yaml" | "xml" | "csv" | "text",
-      jsonSchema
+      jsonSchema,
+      csvDelimiter as "comma" | "semicolon" | undefined
     );
 
     logger.info("Template generated successfully", {

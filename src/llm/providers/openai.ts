@@ -21,7 +21,8 @@ const MODEL = "gpt-4o-2024-08-06"; // Supports structured outputs
 export async function generateTemplate(
   instructions: string,
   format: ManifestFormat,
-  jsonSchema?: Record<string, unknown>
+  jsonSchema?: Record<string, unknown>,
+  csvDelimiter?: "comma" | "semicolon"
 ): Promise<string> {
   const startTime = Date.now();
 
@@ -64,8 +65,33 @@ Respond ONLY with the structured template using markdown headings, no explanatio
       userPrompt = `User Instructions: ${instructions}
 
 Analyze these instructions and create a STRUCTURED Plain Text template with markdown headings that will be used consistently for analyzing every image. Extract the key analysis categories and create fixed section headings.`;
+    } else if (format === "csv") {
+      // Special handling for CSV - include delimiter information
+      const delimiter = csvDelimiter === "semicolon" ? ";" : ",";
+      const delimiterName = csvDelimiter === "semicolon" ? "semicolon" : "comma";
+
+      systemPrompt = `You are an expert at creating data extraction schemas for image analysis.
+Given user instructions, create a complete example output in CSV format that demonstrates the expected structure.
+
+The output should be:
+- Complete and realistic CSV data
+- Use ${delimiterName} (${delimiter}) as the delimiter
+- Include a header row with column names
+- Follow the specified format exactly
+- Match the user's intent from their instructions
+- Include all necessary fields
+${jsonSchema ? "- Conform to the provided JSON schema" : ""}
+
+CRITICAL: Use ${delimiter} as the delimiter between values, NOT ${delimiter === "," ? "semicolon (;)" : "comma (,)"}.
+
+Respond ONLY with the CSV output, no explanations or markdown code blocks.`;
+
+      userPrompt = `Instructions: ${instructions}
+${jsonSchema ? `\nJSON Schema:\n${JSON.stringify(jsonSchema, null, 2)}` : ""}
+
+Generate a complete example CSV output using ${delimiterName} (${delimiter}) as the delimiter:`;
     } else {
-      // Default prompt for other formats
+      // Default prompt for other formats (JSON, YAML, XML)
       systemPrompt = `You are an expert at creating data extraction schemas for image analysis.
 Given user instructions, create a complete example output in ${format.toUpperCase()} format that demonstrates the expected structure.
 
