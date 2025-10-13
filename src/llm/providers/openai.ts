@@ -172,16 +172,65 @@ Analyze this image and extract the information in the exact structure specified.
 
 /**
  * Create structured output schema from JSON Schema
+ * Recursively ensures all objects have additionalProperties: false for OpenAI strict mode
  */
 function createStructuredOutputSchema(
   jsonSchema: Record<string, unknown>
 ): Record<string, unknown> {
-  // OpenAI structured outputs require specific format
-  // Ensure schema is compatible
+  // Recursively process schema to add additionalProperties: false to all objects
+  const processSchema = (schema: any): any => {
+    if (!schema || typeof schema !== "object") {
+      return schema;
+    }
+
+    // Handle arrays
+    if (schema.type === "array" && schema.items) {
+      return {
+        ...schema,
+        items: processSchema(schema.items),
+      };
+    }
+
+    // Handle objects
+    if (schema.type === "object") {
+      const processed: any = {
+        ...schema,
+        additionalProperties: false, // Always false for OpenAI strict mode
+      };
+
+      // Process nested properties
+      if (schema.properties && typeof schema.properties === "object") {
+        processed.properties = {};
+        for (const [key, value] of Object.entries(schema.properties)) {
+          processed.properties[key] = processSchema(value);
+        }
+      }
+
+      return processed;
+    }
+
+    // Handle oneOf, anyOf, allOf
+    if (schema.oneOf) {
+      return { ...schema, oneOf: schema.oneOf.map(processSchema) };
+    }
+    if (schema.anyOf) {
+      return { ...schema, anyOf: schema.anyOf.map(processSchema) };
+    }
+    if (schema.allOf) {
+      return { ...schema, allOf: schema.allOf.map(processSchema) };
+    }
+
+    return schema;
+  };
+
+  // Start with root object
+  const processed = processSchema(jsonSchema);
+
+  // Ensure root is an object with required fields
   return {
     type: "object",
-    properties: jsonSchema.properties || {},
-    required: (jsonSchema.required as string[]) || [],
+    properties: processed.properties || {},
+    required: (processed.required as string[]) || [],
     additionalProperties: false,
   };
 }
@@ -193,17 +242,32 @@ function createDefaultSchema(): Record<string, unknown> {
   return {
     type: "object",
     properties: {
-      analysis: {
+      description: {
         type: "string",
-        description: "Comprehensive analysis of the image",
+        description: "Detailed description of the image content",
       },
-      extracted_data: {
+      key_observations: {
+        type: "array",
+        description: "List of key observations from the image",
+        items: {
+          type: "string",
+        },
+      },
+      metadata: {
         type: "object",
-        description: "Key-value pairs of extracted information",
-        additionalProperties: true,
+        description: "Additional metadata extracted from the image",
+        properties: {
+          confidence: {
+            type: "string",
+            description: "Confidence level of analysis (high, medium, low)",
+            enum: ["high", "medium", "low"],
+          },
+        },
+        required: ["confidence"],
+        additionalProperties: false,
       },
     },
-    required: ["analysis", "extracted_data"],
+    required: ["description", "key_observations", "metadata"],
     additionalProperties: false,
   };
 }

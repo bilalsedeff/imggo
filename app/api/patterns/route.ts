@@ -17,8 +17,13 @@ import { ListPatternsQuerySchema } from "@/schemas/api";
 import * as patternService from "@/services/patternService";
 import { logger } from "@/lib/logger";
 import { checkRateLimitOrFail } from "@/middleware/rateLimit";
+import OpenAI from "openai";
 
 const BASE_URL = process.env.APP_BASE_URL || "http://localhost:3000";
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const user = await requireAuth(request);
@@ -35,7 +40,74 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   logger.info("Creating pattern via API", {
     user_id: user.userId,
     name: input.name,
+    format: input.format,
+    has_json_schema: !!input.json_schema,
   });
+
+  // Auto-generate JSON schema if missing (required for all formats)
+  if (!input.json_schema) {
+    logger.info("Auto-generating JSON schema from instructions", {
+      user_id: user.userId,
+      pattern_name: input.name,
+    });
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-2024-08-06",
+        messages: [
+          {
+            role: "system",
+            content: `You are an expert at creating JSON Schemas for data extraction tasks.
+Generate a precise JSON Schema that:
+- Has "type": "object" at root
+- Includes "properties" with relevant fields based on instructions
+- Includes "required" array
+- Sets "additionalProperties": false for ALL objects (OpenAI strict mode requirement)
+- Uses appropriate data types
+- For nested objects, ALWAYS set "additionalProperties": false
+- For arrays, include "items" definition
+
+CRITICAL: Every object MUST have "additionalProperties": false
+
+Respond ONLY with the JSON Schema.`,
+          },
+          {
+            role: "user",
+            content: `Generate a JSON Schema for: ${input.instructions}`,
+          },
+        ],
+        temperature: 0.2,
+        max_tokens: 2000,
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (content) {
+        const cleaned = content
+          .replace(/```json\s*/g, "")
+          .replace(/```\s*/g, "")
+          .trim();
+        const schema = JSON.parse(cleaned);
+
+        // Ensure root has required fields
+        schema.type = "object";
+        schema.additionalProperties = false;
+        if (!schema.properties) schema.properties = {};
+
+        input.json_schema = schema;
+
+        logger.info("JSON schema auto-generated successfully", {
+          user_id: user.userId,
+          pattern_name: input.name,
+        });
+      }
+    } catch (error) {
+      logger.error("Failed to auto-generate JSON schema", error, {
+        user_id: user.userId,
+        pattern_name: input.name,
+      });
+      // Continue without schema - will use default schema during inference
+    }
+  }
 
   // The input is already transformed by Zod, so it has the correct type
   const pattern = await patternService.createPattern(user.userId, input as import("@/schemas/pattern").CreatePatternInput);
