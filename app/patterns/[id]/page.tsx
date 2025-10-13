@@ -187,6 +187,12 @@ export default function PatternDetailPage() {
 
   // Preview a version (read-only, doesn't change active version)
   const handlePreviewVersion = (targetVersion: number) => {
+    // If clicking on the current active version, just close dropdown without entering preview mode
+    if (targetVersion === pattern?.version) {
+      setShowVersionDropdown(false);
+      return;
+    }
+
     const versionToPreview = versions.find(v => v.version === targetVersion);
     if (!versionToPreview) return;
 
