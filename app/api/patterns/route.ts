@@ -109,9 +109,23 @@ Respond ONLY with the JSON Schema.`,
     }
   }
 
-  // Generate format-specific example directly from AI
-  if (input.json_schema && input.format !== "json") {
-    logger.info("Generating format-specific example data", {
+  // Use format-specific schema from frontend (Pattern Studio) if provided
+  // This ensures user-approved templates are preserved exactly as shown in UI
+  const hasFormatSchema =
+    (input.format === "yaml" && input.yaml_schema) ||
+    (input.format === "xml" && input.xml_schema) ||
+    (input.format === "csv" && input.csv_schema) ||
+    (input.format === "text" && input.plain_text_schema);
+
+  if (hasFormatSchema) {
+    logger.info("Using format-specific schema from Pattern Studio", {
+      user_id: user.userId,
+      pattern_name: input.name,
+      format: input.format,
+    });
+  } else if (input.json_schema && input.format !== "json") {
+    // Only generate if missing (e.g., API-only pattern creation)
+    logger.info("Generating format-specific example (not provided from frontend)", {
       user_id: user.userId,
       pattern_name: input.name,
       format: input.format,
