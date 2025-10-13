@@ -3,6 +3,8 @@
  */
 
 import { z } from "zod";
+import yaml from "js-yaml";
+import * as xmlJs from "xml-js";
 
 export const ManifestFormatSchema = z.enum(["json", "yaml", "xml", "csv", "text"]);
 export type ManifestFormat = z.infer<typeof ManifestFormatSchema>;
@@ -31,10 +33,140 @@ export const InstructionsSchema = z
   .max(PATTERN_LIMITS.INSTRUCTIONS_MAX, `Instructions cannot exceed ${PATTERN_LIMITS.INSTRUCTIONS_MAX} characters`);
 
 /**
- * JSON Schema validation (simplified)
- * Full JSON Schema validation would require json-schema library
+ * JSON Schema validation - Hybrid approach
+ * Accepts both:
+ * 1. Example JSON: { "name": "John", "age": 25 }
+ * 2. JSON Schema: { "type": "object", "properties": { ... } }
+ *
+ * System auto-detects and converts example → schema at inference time
+ * Using schemas increases response consistency guarantee
  */
 export const JsonSchemaSchema = z.record(z.unknown()).nullable().optional();
+
+/**
+ * Validates YAML syntax - Hybrid approach
+ * Accepts both example YAML and YAML Schema
+ */
+export function validateYamlSyntax(text: string): { valid: boolean; error?: string } {
+  try {
+    yaml.load(text);
+    return { valid: true };
+  } catch (error) {
+    return {
+      valid: false,
+      error: `Invalid YAML syntax: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+/**
+ * YAML Schema validator with syntax checking
+ */
+export const YamlSchemaValidator = z
+  .string()
+  .max(PATTERN_LIMITS.SCHEMA_MAX, `YAML schema cannot exceed ${PATTERN_LIMITS.SCHEMA_MAX} characters`)
+  .refine(
+    (text) => {
+      const result = validateYamlSyntax(text);
+      return result.valid;
+    },
+    (text) => {
+      const result = validateYamlSyntax(text);
+      return { message: result.error || "Invalid YAML syntax" };
+    }
+  )
+  .nullable()
+  .optional();
+
+/**
+ * Validates XML syntax - Hybrid approach
+ * Accepts both example XML and XML Schema (XSD)
+ */
+export function validateXmlSyntax(text: string): { valid: boolean; error?: string } {
+  try {
+    xmlJs.xml2js(text, { compact: false });
+    return { valid: true };
+  } catch (error) {
+    return {
+      valid: false,
+      error: `Invalid XML syntax: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+/**
+ * XML Schema validator with syntax checking
+ */
+export const XmlSchemaValidator = z
+  .string()
+  .max(PATTERN_LIMITS.SCHEMA_MAX, `XML schema cannot exceed ${PATTERN_LIMITS.SCHEMA_MAX} characters`)
+  .refine(
+    (text) => {
+      const result = validateXmlSyntax(text);
+      return result.valid;
+    },
+    (text) => {
+      const result = validateXmlSyntax(text);
+      return { message: result.error || "Invalid XML syntax" };
+    }
+  )
+  .nullable()
+  .optional();
+
+/**
+ * Validates CSV format - Hybrid approach
+ * Must have at least headers row
+ * Accepts:
+ * 1. Headers only: "Name,Age,City"
+ * 2. Headers + example rows: "Name,Age,City\nJohn,25,NYC"
+ */
+export function validateCsvFormat(text: string): { valid: boolean; error?: string } {
+  const trimmed = text.trim();
+
+  if (!trimmed) {
+    return { valid: false, error: "CSV schema cannot be empty" };
+  }
+
+  const lines = trimmed.split('\n');
+
+  if (lines.length === 0) {
+    return { valid: false, error: "CSV must have at least a header row" };
+  }
+
+  const headerLine = lines[0].trim();
+
+  if (!headerLine) {
+    return { valid: false, error: "CSV header row cannot be empty" };
+  }
+
+  // Check if headers exist (at least one column)
+  const headers = headerLine.split(/[,;]/).map(h => h.trim()).filter(h => h.length > 0);
+
+  if (headers.length === 0) {
+    return { valid: false, error: "CSV must have at least one column header" };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * CSV Schema validator with format checking
+ */
+export const CsvSchemaValidator = z
+  .string()
+  .max(PATTERN_LIMITS.SCHEMA_MAX, `CSV schema cannot exceed ${PATTERN_LIMITS.SCHEMA_MAX} characters`)
+  .refine(
+    (text) => {
+      const result = validateCsvFormat(text);
+      return result.valid;
+    },
+    (text) => {
+      const result = validateCsvFormat(text);
+      return { message: result.error || "Invalid CSV format" };
+    }
+  )
+  .nullable()
+  .optional();
 
 /**
  * Validates markdown heading structure for Plain Text patterns
@@ -118,9 +250,9 @@ const BaseCreatePatternSchema = z.object({
   format: ManifestFormatSchema.optional(),
   instructions: InstructionsSchema,
   json_schema: JsonSchemaSchema,
-  yaml_schema: z.string().max(PATTERN_LIMITS.SCHEMA_MAX, `YAML schema cannot exceed ${PATTERN_LIMITS.SCHEMA_MAX} characters`).nullable().optional(),
-  xml_schema: z.string().max(PATTERN_LIMITS.SCHEMA_MAX, `XML schema cannot exceed ${PATTERN_LIMITS.SCHEMA_MAX} characters`).nullable().optional(),
-  csv_schema: z.string().max(PATTERN_LIMITS.SCHEMA_MAX, `CSV schema cannot exceed ${PATTERN_LIMITS.SCHEMA_MAX} characters`).nullable().optional(),
+  yaml_schema: YamlSchemaValidator,
+  xml_schema: XmlSchemaValidator,
+  csv_schema: CsvSchemaValidator,
   plain_text_schema: PlainTextSchemaValidator.nullable().optional(),
   model_profile: ModelProfileSchema.optional(),
 });
@@ -157,9 +289,9 @@ export const UpdatePatternSchema = z.object({
   format: ManifestFormatSchema.optional(),
   instructions: InstructionsSchema.optional(),
   json_schema: JsonSchemaSchema,
-  yaml_schema: z.string().max(PATTERN_LIMITS.SCHEMA_MAX, `YAML schema cannot exceed ${PATTERN_LIMITS.SCHEMA_MAX} characters`).optional(),
-  xml_schema: z.string().max(PATTERN_LIMITS.SCHEMA_MAX, `XML schema cannot exceed ${PATTERN_LIMITS.SCHEMA_MAX} characters`).optional(),
-  csv_schema: z.string().max(PATTERN_LIMITS.SCHEMA_MAX, `CSV schema cannot exceed ${PATTERN_LIMITS.SCHEMA_MAX} characters`).optional(),
+  yaml_schema: YamlSchemaValidator,
+  xml_schema: XmlSchemaValidator,
+  csv_schema: CsvSchemaValidator,
   plain_text_schema: PlainTextSchemaValidator.optional(),
   is_active: z.boolean().optional(),
   publish_new_version: z.boolean().optional().default(false),

@@ -1115,7 +1115,31 @@ export default function NewPatternPage() {
             {/* JSON Schema */}
             <div>
               <label className="text-sm font-medium mb-2 flex items-center justify-between">
-                <span>{format.toUpperCase()} Schema (Optional)</span>
+                <div className="flex items-center gap-2">
+                  <span>{format.toUpperCase()} Schema (Optional)</span>
+                  <div className="group relative inline-block">
+                    <div className="w-4 h-4 rounded-full border border-muted-foreground/30 flex items-center justify-center cursor-help text-[10px] text-muted-foreground">
+                      !
+                    </div>
+                    <div className="invisible group-hover:visible absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-80 p-3 bg-popover border border-border rounded-lg shadow-lg text-xs text-popover-foreground z-50">
+                      <p className="font-semibold mb-1.5">Hybrid Approach - Send Either:</p>
+                      <ul className="space-y-1.5 mb-2">
+                        <li className="flex gap-1.5">
+                          <span className="text-green-500 shrink-0">✓</span>
+                          <span><strong>Example Data:</strong> {`{ "name": "John", "age": 25 }`}</span>
+                        </li>
+                        <li className="flex gap-1.5">
+                          <span className="text-green-500 shrink-0">✓</span>
+                          <span><strong>Schema Format:</strong> {`{ "type": "object", "properties": {...} }`}</span>
+                        </li>
+                      </ul>
+                      <p className="text-muted-foreground">
+                        <strong>Note:</strong> Using schema format increases response consistency. Example format may vary in data types.
+                      </p>
+                      <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-border"></div>
+                    </div>
+                  </div>
+                </div>
                 {jsonSchema && (
                   <button
                     onClick={handleCopySchemaToTemplate}
