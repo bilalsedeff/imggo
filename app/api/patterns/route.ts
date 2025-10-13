@@ -18,7 +18,6 @@ import * as patternService from "@/services/patternService";
 import { logger } from "@/lib/logger";
 import { checkRateLimitOrFail } from "@/middleware/rateLimit";
 import OpenAI from "openai";
-import { convertManifest, type ManifestFormat } from "@/lib/formatConverter";
 
 const BASE_URL = process.env.APP_BASE_URL || "http://localhost:3000";
 
@@ -110,32 +109,53 @@ Respond ONLY with the JSON Schema.`,
     }
   }
 
-  // Generate example data from JSON Schema and convert to target format
+  // Generate format-specific example directly from AI
   if (input.json_schema && input.format !== "json") {
-    logger.info("Generating example data for format-specific schema", {
+    logger.info("Generating format-specific example data", {
       user_id: user.userId,
       pattern_name: input.name,
       format: input.format,
     });
 
     try {
+      // Get format-specific prompt
+      const formatInstructions: Record<string, string> = {
+        yaml: `Generate a realistic YAML example that matches this JSON Schema.
+- Use proper YAML syntax with indentation
+- Include realistic, contextual values (not placeholders)
+- Follow the schema's structure exactly
+- Respond ONLY with valid YAML, no markdown code blocks or explanations`,
+        xml: `Generate a realistic XML example that matches this JSON Schema.
+- Use proper XML syntax with tags
+- Include realistic, contextual values (not placeholders)
+- Follow the schema's structure exactly
+- Start with <?xml version="1.0" encoding="UTF-8"?>
+- Respond ONLY with valid XML, no markdown code blocks or explanations`,
+        csv: `Generate a realistic CSV example that matches this JSON Schema.
+- Create a tabular format with headers in first row
+- Include 2-3 data rows with realistic values (not placeholders)
+- Use proper CSV format with comma separation
+- For nested objects: flatten them as separate columns or create related tables
+- For arrays: create multiple rows or use semicolon-separated values within a cell
+- Respond ONLY with valid CSV, no markdown code blocks or explanations`,
+        text: `Generate a realistic plain text example that matches this JSON Schema.
+- Use human-readable format with labels and values
+- Include realistic, contextual values (not placeholders)
+- Use proper indentation and structure for readability
+- Follow the schema's structure
+- Respond ONLY with plain text, no markdown or special formatting`,
+      };
+
       const response = await openai.chat.completions.create({
         model: "gpt-4o-2024-08-06",
         messages: [
           {
             role: "system",
-            content: `You are an expert at generating realistic example data from JSON Schemas.
-Generate example data that:
-- Matches the provided JSON Schema exactly
-- Uses realistic, contextual values (not placeholders like "string" or "123")
-- Follows the schema's structure, types, and constraints
-- Returns ONLY the JSON data, no explanations
-
-Respond ONLY with valid JSON.`,
+            content: formatInstructions[input.format],
           },
           {
             role: "user",
-            content: `Generate realistic example data for this JSON Schema:\n\n${JSON.stringify(input.json_schema, null, 2)}\n\nContext: ${input.instructions}`,
+            content: `JSON Schema:\n\n${JSON.stringify(input.json_schema, null, 2)}\n\nContext: ${input.instructions}\n\nGenerate example in ${input.format.toUpperCase()} format:`,
           },
         ],
         temperature: 0.7,
@@ -144,39 +164,36 @@ Respond ONLY with valid JSON.`,
 
       const content = response.choices[0]?.message?.content;
       if (content) {
+        // Clean up any markdown code blocks that AI might add
         const cleaned = content
-          .replace(/```json\s*/g, "")
+          .replace(/```(?:yaml|xml|csv|text)?\s*/g, "")
           .replace(/```\s*/g, "")
           .trim();
-        const exampleData = JSON.parse(cleaned);
-
-        // Convert to target format
-        const formattedExample = convertManifest(exampleData, input.format as ManifestFormat);
 
         // Store in appropriate column
         switch (input.format) {
           case "yaml":
-            input.yaml_schema = formattedExample;
+            input.yaml_schema = cleaned;
             break;
           case "xml":
-            input.xml_schema = formattedExample;
+            input.xml_schema = cleaned;
             break;
           case "csv":
-            input.csv_schema = formattedExample;
+            input.csv_schema = cleaned;
             break;
           case "text":
-            input.plain_text_schema = formattedExample;
+            input.plain_text_schema = cleaned;
             break;
         }
 
-        logger.info("Format-specific schema generated successfully", {
+        logger.info("Format-specific example generated successfully", {
           user_id: user.userId,
           pattern_name: input.name,
           format: input.format,
         });
       }
     } catch (error) {
-      logger.error("Failed to generate format-specific schema", error, {
+      logger.error("Failed to generate format-specific example", error, {
         user_id: user.userId,
         pattern_name: input.name,
         format: input.format,
