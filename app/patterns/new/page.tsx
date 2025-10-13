@@ -587,22 +587,24 @@ export default function NewPatternPage() {
         };
 
         // Add format-specific schema if template exists
+        // CRITICAL: Send the EXACT template user approved in Pattern Studio
         if (template) {
           const cleaned = cleanTemplate(template);
 
           if (format === "json") {
             newPatternSchema.json_schema = JSON.parse(cleaned);
-          }
-          // For other formats, we still need json_schema for backward compatibility
-          // But also add format-specific schema
-          try {
-            const parsedJson = JSON.parse(cleaned);
-            newPatternSchema.json_schema = parsedJson;
-          } catch {
-            // If template is not JSON, just use json_schema undefined
-            newPatternSchema.json_schema = undefined;
+          } else if (format === "yaml") {
+            newPatternSchema.yaml_schema = cleaned;
+          } else if (format === "xml") {
+            newPatternSchema.xml_schema = cleaned;
+          } else if (format === "csv") {
+            newPatternSchema.csv_schema = cleaned;
+          } else if (format === "text") {
+            newPatternSchema.plain_text_schema = cleaned;
           }
         }
+
+        console.log("Create payload:", JSON.stringify(newPatternSchema, null, 2));
 
         const response = await fetch("/api/patterns", {
           method: "POST",
@@ -991,7 +993,14 @@ export default function NewPatternPage() {
               <textarea
                 value={jsonSchema}
                 onChange={(e) => setJsonSchema(e.target.value)}
-                placeholder='{"type": "object", "properties": {...}}'
+                placeholder={
+                  format === "json" ? '{"type": "object", "properties": {...}}' :
+                  format === "yaml" ? 'key: value\nlist:\n  - item1\n  - item2' :
+                  format === "xml" ? '<?xml version="1.0"?>\n<root>\n  <item>value</item>\n</root>' :
+                  format === "csv" ? 'header1,header2,header3\nvalue1,value2,value3' :
+                  format === "text" ? '# Main Heading\n[Placeholder]\n\n## Sub Heading\n[Placeholder]' :
+                  '{"type": "object", "properties": {...}}'
+                }
                 rows={8}
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-background resize-none font-mono text-sm ${
                   jsonSchema.length > PATTERN_LIMITS.SCHEMA_MAX

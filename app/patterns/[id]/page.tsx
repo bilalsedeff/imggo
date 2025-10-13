@@ -25,6 +25,7 @@ import {
   Eye,
   History,
   ChevronDown,
+  Trash2,
 } from "lucide-react";
 
 interface Pattern {
@@ -76,6 +77,8 @@ export default function PatternDetailPage() {
   const [showVersionDropdown, setShowVersionDropdown] = useState(false);
   const [isSwitchingVersion, setIsSwitchingVersion] = useState(false);
   const [codeExampleTab, setCodeExampleTab] = useState<"url" | "file">("url");
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Upload state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -215,6 +218,37 @@ export default function PatternDetailPage() {
       setError("Failed to switch version");
     } finally {
       setIsSwitchingVersion(false);
+    }
+  };
+
+  const handleDeletePattern = async () => {
+    if (!session?.access_token || !patternId) return;
+
+    setIsDeleting(true);
+    setError("");
+
+    try {
+      const response = await fetch(`/api/patterns/${patternId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (response.ok) {
+        // Redirect to patterns page after successful deletion
+        window.location.href = "/patterns";
+      } else {
+        const data = await response.json();
+        setError(data.error?.message || "Failed to delete pattern");
+        setIsDeleting(false);
+        setShowDeleteConfirm(false);
+      }
+    } catch (err) {
+      console.error("Failed to delete pattern:", err);
+      setError("Failed to delete pattern");
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -629,6 +663,51 @@ print(result)`
       <Navbar />
       <div className="p-8">
         <div className="max-w-5xl mx-auto">
+          {/* Delete Confirmation Modal */}
+          {showDeleteConfirm && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+              <div className="bg-background border border-border rounded-lg p-6 max-w-md w-full mx-4">
+                <div className="flex items-start gap-3 mb-4">
+                  <div className="p-2 bg-destructive/10 rounded-full">
+                    <Trash2 className="w-5 h-5 text-destructive" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-lg mb-1">Delete Pattern</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Are you sure you want to delete <strong>{pattern?.name}</strong>? This action cannot be undone. All versions and associated data will be permanently removed.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-3 justify-end">
+                  <button
+                    onClick={() => setShowDeleteConfirm(false)}
+                    disabled={isDeleting}
+                    className="px-4 py-2 border border-border rounded-lg text-sm hover:bg-accent transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDeletePattern}
+                    disabled={isDeleting}
+                    className="px-4 py-2 bg-destructive text-destructive-foreground rounded-lg text-sm hover:bg-destructive/90 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isDeleting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Deleting...
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="w-4 h-4" />
+                        Delete Pattern
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Header */}
           <Link
             href="/patterns"
@@ -714,6 +793,13 @@ print(result)`
                 <Edit3 className="w-4 h-4" />
                 Create New Version
               </Link>
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="px-4 py-2 border border-destructive text-destructive rounded-lg hover:bg-destructive/10 transition flex items-center gap-2"
+                disabled={isDeleting}
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
