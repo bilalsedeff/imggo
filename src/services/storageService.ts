@@ -66,6 +66,78 @@ export async function createSignedUploadUrl(params: {
 }
 
 /**
+ * Upload file directly to Supabase Storage (for multipart/form-data)
+ * Used when API receives file instead of URL
+ */
+export async function uploadToSupabaseStorage(params: {
+  file: File;
+  userId: string;
+  patternId: string;
+}): Promise<{
+  path: string;
+  publicUrl: string;
+}> {
+  const { file, userId, patternId } = params;
+
+  try {
+    // Generate unique filename
+    const timestamp = Date.now();
+    const randomSuffix = Math.random().toString(36).substring(2, 8);
+    const extension = file.name.split(".").pop() || "jpg";
+    const filename = `${timestamp}_${randomSuffix}.${extension}`;
+
+    // User-scoped path: userId/patternId/filename
+    const filePath = `${userId}/${patternId}/${filename}`;
+
+    logger.info("Uploading file to storage", {
+      user_id: userId,
+      pattern_id: patternId,
+      filename,
+      size: file.size,
+      type: file.type,
+    });
+
+    // Convert File to ArrayBuffer
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    // Upload to Supabase Storage
+    const { data, error } = await supabaseServer.storage
+      .from(BUCKET_NAME)
+      .upload(filePath, buffer, {
+        contentType: file.type,
+        upsert: false,
+      });
+
+    if (error) {
+      logger.error("Failed to upload file to storage", error, {
+        user_id: userId,
+        pattern_id: patternId,
+        path: filePath,
+      });
+      throw new Error(`Failed to upload file: ${error.message}`);
+    }
+
+    logger.info("File uploaded successfully", {
+      user_id: userId,
+      pattern_id: patternId,
+      path: data.path,
+    });
+
+    // Get public URL
+    const publicUrl = getPublicUrl(data.path);
+
+    return {
+      path: data.path,
+      publicUrl,
+    };
+  } catch (error) {
+    logger.error("Exception uploading file", error);
+    throw error;
+  }
+}
+
+/**
  * Get public URL for uploaded file
  */
 export function getPublicUrl(path: string): string {

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useAuth } from "@/providers/auth-provider";
-import { User, LogOut, ChevronDown, Moon, Sun } from "lucide-react";
+import { User, LogOut, ChevronDown, Moon, Sun, Key } from "lucide-react";
 
 export function Navbar() {
   const { user, session, signOut } = useAuth();
@@ -102,6 +102,15 @@ export function Navbar() {
                       {user?.user_metadata?.full_name || "User"}
                     </p>
                   </div>
+
+                  <Link
+                    href="/settings/api-keys"
+                    onClick={() => setIsDropdownOpen(false)}
+                    className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-accent transition"
+                  >
+                    <Key className="w-4 h-4" />
+                    <span>API Keys</span>
+                  </Link>
 
                   <button
                     onClick={() => setTheme(theme === "dark" ? "light" : "dark")}

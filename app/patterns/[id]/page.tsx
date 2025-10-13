@@ -75,6 +75,7 @@ export default function PatternDetailPage() {
   const [versions, setVersions] = useState<PatternVersion[]>([]);
   const [showVersionDropdown, setShowVersionDropdown] = useState(false);
   const [isSwitchingVersion, setIsSwitchingVersion] = useState(false);
+  const [codeExampleTab, setCodeExampleTab] = useState<"url" | "file">("url");
 
   // Upload state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -439,7 +440,8 @@ export default function PatternDetailPage() {
     }
   };
 
-  const curlExample = pattern
+  // Code examples for URL-based upload
+  const curlExampleUrl = pattern
     ? `curl -X POST "${pattern.endpoint_url}" \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
@@ -448,7 +450,7 @@ export default function PatternDetailPage() {
   }'`
     : "";
 
-  const nodeExample = pattern
+  const nodeExampleUrl = pattern
     ? `const response = await fetch("${pattern.endpoint_url}", {
   method: "POST",
   headers: {
@@ -464,7 +466,7 @@ const result = await response.json();
 console.log(result);`
     : "";
 
-  const pythonExample = pattern
+  const pythonExampleUrl = pattern
     ? `import requests
 
 response = requests.post(
@@ -480,6 +482,56 @@ response = requests.post(
 result = response.json()
 print(result)`
     : "";
+
+  // Code examples for file upload
+  const curlExampleFile = pattern
+    ? `curl -X POST "${pattern.endpoint_url}" \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -F "image=@/path/to/your/image.jpg"`
+    : "";
+
+  const nodeExampleFile = pattern
+    ? `const fs = require('fs');
+const FormData = require('form-data');
+
+const formData = new FormData();
+formData.append('image', fs.createReadStream('/path/to/your/image.jpg'));
+
+const response = await fetch("${pattern.endpoint_url}", {
+  method: "POST",
+  headers: {
+    "Authorization": "Bearer YOUR_API_KEY",
+    ...formData.getHeaders()
+  },
+  body: formData
+});
+
+const result = await response.json();
+console.log(result);`
+    : "";
+
+  const pythonExampleFile = pattern
+    ? `import requests
+
+with open('/path/to/your/image.jpg', 'rb') as image_file:
+    response = requests.post(
+        "${pattern.endpoint_url}",
+        headers={
+            "Authorization": "Bearer YOUR_API_KEY"
+        },
+        files={
+            "image": image_file
+        }
+    )
+
+result = response.json()
+print(result)`
+    : "";
+
+  // Select examples based on active tab
+  const curlExample = codeExampleTab === "url" ? curlExampleUrl : curlExampleFile;
+  const nodeExample = codeExampleTab === "url" ? nodeExampleUrl : nodeExampleFile;
+  const pythonExample = codeExampleTab === "url" ? pythonExampleUrl : pythonExampleFile;
 
   if (isLoading) {
     return (
@@ -696,6 +748,56 @@ print(result)`
               <Code className="w-5 h-5" />
               Code Examples
             </h2>
+
+            {/* Authentication Note */}
+            <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">
+                    API Authentication Required
+                  </h3>
+                  <p className="text-sm text-blue-800 dark:text-blue-200 mb-3">
+                    To use the API programmatically, you need an API key. Replace{" "}
+                    <code className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/50 rounded font-mono text-xs">
+                      YOUR_API_KEY
+                    </code>{" "}
+                    in the examples below with your actual API key.
+                  </p>
+                  <Link
+                    href="/settings/api-keys"
+                    className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1"
+                  >
+                    Create API Key
+                    <ExternalLink className="w-3 h-3" />
+                  </Link>
+                </div>
+              </div>
+            </div>
+
+            {/* Upload Method Tabs */}
+            <div className="flex gap-2 mb-6 border-b border-border">
+              <button
+                onClick={() => setCodeExampleTab("url")}
+                className={`px-4 py-2 text-sm font-medium transition ${
+                  codeExampleTab === "url"
+                    ? "border-b-2 border-primary text-primary"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Image URL
+              </button>
+              <button
+                onClick={() => setCodeExampleTab("file")}
+                className={`px-4 py-2 text-sm font-medium transition ${
+                  codeExampleTab === "file"
+                    ? "border-b-2 border-primary text-primary"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                File Upload
+              </button>
+            </div>
 
             {/* cURL */}
             <div className="mb-6">

@@ -6,7 +6,6 @@
 import { NextRequest } from "next/server";
 import {
   withErrorHandling,
-  requireAuth,
   parseBody,
   successResponse,
   ApiError,
@@ -17,7 +16,10 @@ import * as patternService from "@/services/patternService";
 import * as jobService from "@/services/jobService";
 import { processImage } from "@/services/imageProcessingService";
 import { logger } from "@/lib/logger";
-import { checkRateLimitOrFail } from "@/middleware/rateLimit";
+import { requireAuthOrApiKey, getRequestIp } from "@/lib/auth-unified";
+import { enforceRateLimit, checkRateLimit, getRateLimitHeaders } from "@/middleware/rateLimitParametric";
+import { uploadToSupabaseStorage } from "@/services/storageService";
+import { z } from "zod";
 
 // Configure Vercel function timeout (Pro: 30s max)
 export const maxDuration = 30;
@@ -28,28 +30,104 @@ export const POST = withErrorHandling(
     context?: { params: Promise<Record<string, string>> }
   ) => {
     if (!context) throw new ApiError("Missing params", 400);
-    const user = await requireAuth(request);
 
-    // Rate limiting check (100 images per 10 min sustained)
-    const rateLimitResponse = await checkRateLimitOrFail(
-      request,
-      "patterns.ingest"
+    // Dual authentication: API Key or Session
+    const authContext = await requireAuthOrApiKey(request, "patterns:ingest");
+
+    // Get request IP for rate limiting
+    const requestIp = getRequestIp(request);
+
+    // Parametric rate limiting based on user plan
+    const endpoint = "/api/patterns/[id]/ingest";
+    const rateLimitResponse = await enforceRateLimit(
+      authContext.userId,
+      authContext,
+      endpoint,
+      requestIp
     );
     if (rateLimitResponse) return rateLimitResponse;
 
     const { id: patternId } = await context.params;
     if (!patternId) throw new ApiError("Missing pattern ID", 400);
 
-    const input = await parseBody(request, IngestRequestSchema);
+    // Check content type: JSON or multipart/form-data
+    const contentType = request.headers.get("content-type") || "";
+    let imageUrl: string;
+    let idempotencyKey: string | undefined;
+    let extras: Record<string, unknown> | undefined;
+
+    if (contentType.includes("multipart/form-data")) {
+      // 📤 MULTIPART: Direct file upload
+      logger.info("Processing multipart/form-data upload", {
+        pattern_id: patternId,
+        user_id: authContext.userId,
+      });
+
+      const formData = await request.formData();
+      const imageFile = formData.get("image") as File | null;
+      idempotencyKey = (formData.get("idempotency_key") as string) || undefined;
+      const extrasString = formData.get("extras") as string | null;
+
+      if (extrasString) {
+        try {
+          extras = JSON.parse(extrasString);
+        } catch {
+          throw new ApiError("Invalid extras JSON", 400);
+        }
+      }
+
+      if (!imageFile) {
+        throw new ApiError("Missing 'image' field in form data", 400);
+      }
+
+      // Validate file type
+      if (!imageFile.type.startsWith("image/")) {
+        throw new ApiError("File must be an image", 400);
+      }
+
+      // Validate file size (max 10MB)
+      const maxSize = 10 * 1024 * 1024;
+      if (imageFile.size > maxSize) {
+        throw new ApiError("Image too large (max 10MB)", 400);
+      }
+
+      logger.info("Uploading image to storage", {
+        filename: imageFile.name,
+        size: imageFile.size,
+        type: imageFile.type,
+      });
+
+      // Upload to Supabase Storage
+      const uploadResult = await uploadToSupabaseStorage({
+        file: imageFile,
+        userId: authContext.userId,
+        patternId,
+      });
+
+      imageUrl = uploadResult.publicUrl;
+
+      logger.info("Image uploaded successfully", {
+        image_url: imageUrl,
+        path: uploadResult.path,
+      });
+    } else {
+      // 🔗 JSON: Image URL provided
+      const input = await parseBody(request, IngestRequestSchema);
+      imageUrl = input.image_url;
+      idempotencyKey = input.idempotency_key;
+      extras = input.extras;
+    }
 
     logger.info("Ingesting image via API", {
       pattern_id: patternId,
-      user_id: user.userId,
-      idempotency_key: input.idempotency_key,
+      user_id: authContext.userId,
+      auth_type: authContext.authType,
+      idempotency_key: idempotencyKey,
+      upload_method: contentType.includes("multipart") ? "multipart" : "json",
     });
 
     // Verify pattern exists and user owns it
-    const pattern = await patternService.getPattern(patternId, user.userId);
+    const pattern = await patternService.getPattern(patternId, authContext.userId);
     if (!pattern) {
       throw new ApiError("Pattern not found", 404, "NOT_FOUND");
     }
@@ -59,12 +137,12 @@ export const POST = withErrorHandling(
     }
 
     // Handle idempotency
-    if (input.idempotency_key) {
-      const idempotencyCheck = await handleIdempotency(input.idempotency_key);
+    if (idempotencyKey) {
+      const idempotencyCheck = await handleIdempotency(idempotencyKey);
 
       if (idempotencyCheck.isDuplicate && idempotencyCheck.existingData) {
         logger.info("Returning existing job for idempotent request", {
-          idempotency_key: input.idempotency_key,
+          idempotency_key: idempotencyKey,
         });
 
         return successResponse(idempotencyCheck.existingData, 200);
@@ -74,10 +152,10 @@ export const POST = withErrorHandling(
     // Create job record first (status: 'queued')
     const { jobId } = await jobService.createJobRecord({
       patternId: pattern.id,
-      imageUrl: input.image_url,
-      userId: user.userId,
-      idempotencyKey: input.idempotency_key,
-      extras: input.extras,
+      imageUrl: imageUrl,
+      userId: authContext.userId,
+      idempotencyKey: idempotencyKey,
+      extras: extras,
     });
 
     logger.info("Job created, attempting direct processing", {
@@ -94,8 +172,8 @@ export const POST = withErrorHandling(
       const processingPromise = processImage({
         jobId,
         patternId: pattern.id,
-        imageUrl: input.image_url,
-        userId: user.userId,
+        imageUrl: imageUrl,
+        userId: authContext.userId,
       });
 
       const result = await Promise.race([processingPromise, timeoutPromise]);
@@ -108,7 +186,11 @@ export const POST = withErrorHandling(
           approach: "direct",
         });
 
-        return successResponse(
+        // Get current rate limit status for headers
+        const rateLimitStatus = await checkRateLimit(authContext.userId, authContext);
+        const rateLimitHeaders = getRateLimitHeaders(rateLimitStatus);
+
+        const response = successResponse(
           {
             job_id: jobId,
             status: "succeeded",
@@ -118,6 +200,13 @@ export const POST = withErrorHandling(
           },
           200 // 200 OK - instant response!
         );
+
+        // Add rate limit headers
+        Object.entries(rateLimitHeaders).forEach(([key, value]) => {
+          response.headers.set(key, value);
+        });
+
+        return response;
       } else {
         throw new Error(result.error || "Processing failed");
       }
@@ -136,12 +225,16 @@ export const POST = withErrorHandling(
       await jobService.enqueueExistingJob(jobId, {
         job_id: jobId,
         pattern_id: pattern.id,
-        image_url: input.image_url,
-        extras: input.extras,
+        image_url: imageUrl,
+        extras: extras,
       });
 
+      // Get current rate limit status for headers
+      const rateLimitStatus = await checkRateLimit(authContext.userId, authContext);
+      const rateLimitHeaders = getRateLimitHeaders(rateLimitStatus);
+
       // Return 202 - client should poll
-      return successResponse(
+      const response = successResponse(
         {
           job_id: jobId,
           status: "queued",
@@ -151,6 +244,13 @@ export const POST = withErrorHandling(
         },
         202
       );
+
+      // Add rate limit headers
+      Object.entries(rateLimitHeaders).forEach(([key, value]) => {
+        response.headers.set(key, value);
+      });
+
+      return response;
     }
   }
 );
