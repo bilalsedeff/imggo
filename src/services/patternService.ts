@@ -55,11 +55,15 @@ export async function createPattern(
       throw new Error("No data returned from pattern creation");
     }
 
-    // Create initial version
+    // Create initial version with ALL format-specific schemas
     await insertRow(supabaseServer, "pattern_versions", {
       pattern_id: data.id,
       version: 1,
       json_schema: (input.json_schema || null) as Database["public"]["Tables"]["pattern_versions"]["Insert"]["json_schema"],
+      yaml_schema: input.yaml_schema || null,
+      xml_schema: input.xml_schema || null,
+      csv_schema: input.csv_schema || null,
+      plain_text_schema: input.plain_text_schema || null,
       instructions: input.instructions,
       format: input.format,
     });
@@ -224,7 +228,36 @@ export async function deletePattern(
       throw new Error("Pattern not found or access denied");
     }
 
-    // Hard delete - permanently remove from database
+    // Delete related records first to avoid foreign key constraints
+    // 1. Delete jobs
+    const { error: jobsError } = await supabaseServer
+      .from("jobs")
+      .delete()
+      .eq("pattern_id", patternId);
+
+    if (jobsError) {
+      logger.error("Failed to delete jobs", {
+        pattern_id: patternId,
+        error_message: jobsError.message,
+      });
+      throw new Error(`Failed to delete jobs: ${jobsError.message}`);
+    }
+
+    // 2. Delete pattern versions
+    const { error: versionsError } = await supabaseServer
+      .from("pattern_versions")
+      .delete()
+      .eq("pattern_id", patternId);
+
+    if (versionsError) {
+      logger.error("Failed to delete pattern versions", {
+        pattern_id: patternId,
+        error_message: versionsError.message,
+      });
+      throw new Error(`Failed to delete pattern versions: ${versionsError.message}`);
+    }
+
+    // 3. Finally, delete the pattern itself
     const { error } = await supabaseServer
       .from("patterns")
       .delete()
@@ -232,13 +265,22 @@ export async function deletePattern(
       .eq("user_id", userId);
 
     if (error) {
-      logger.error("Failed to delete pattern", error, { pattern_id: patternId });
-      throw error;
+      logger.error("Failed to delete pattern", {
+        pattern_id: patternId,
+        error: error,
+        error_message: error.message,
+        error_code: error.code,
+        error_details: error.details,
+      });
+      throw new Error(`Failed to delete pattern: ${error.message || JSON.stringify(error)}`);
     }
 
-    logger.info("Pattern deleted", { pattern_id: patternId });
+    logger.info("Pattern deleted successfully", { pattern_id: patternId });
   } catch (error) {
-    logger.error("Exception deleting pattern", error);
+    logger.error("Exception deleting pattern", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     throw error;
   }
 }

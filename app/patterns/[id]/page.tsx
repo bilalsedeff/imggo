@@ -793,13 +793,6 @@ print(result)`
                 <Edit3 className="w-4 h-4" />
                 Create New Version
               </Link>
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="px-4 py-2 border border-destructive text-destructive rounded-lg hover:bg-destructive/10 transition flex items-center gap-2"
-                disabled={isDeleting}
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
             </div>
           </div>
 
@@ -1255,6 +1248,18 @@ print(result)`
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Delete Pattern Section - Bottom Right */}
+          <div className="flex justify-end mt-8">
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="px-6 py-3 border-2 border-destructive text-destructive rounded-lg hover:bg-destructive hover:text-destructive-foreground transition flex items-center gap-2 font-medium"
+              disabled={isDeleting}
+            >
+              <Trash2 className="w-5 h-5" />
+              Delete Pattern
+            </button>
           </div>
         </div>
       </div>
