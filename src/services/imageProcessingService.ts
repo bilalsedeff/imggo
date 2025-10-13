@@ -67,7 +67,7 @@ export async function processImage(
     // Import orchestrator for proper format handling
     const { inferManifest: orchestratorInferManifest } = await import("@/llm/orchestrator");
 
-    // Infer manifest using orchestrator (handles all formats properly)
+    // DIVINE RULE: Infer manifest using ALL format-specific schemas
     const { manifest, manifestString, latencyMs } = await orchestratorInferManifest({
       imageUrl,
       instructions: pattern.instructions,
@@ -75,6 +75,9 @@ export async function processImage(
       jsonSchema: pattern.json_schema || undefined,
       csvSchema: pattern.csv_schema || undefined,
       csvDelimiter: (pattern.csv_delimiter || "comma") as "comma" | "semicolon",
+      yamlSchema: pattern.yaml_schema || undefined,
+      xmlSchema: pattern.xml_schema || undefined,
+      plainTextSchema: pattern.plain_text_schema || undefined,
       modelProfile: (pattern.model_profile || "managed-default") as any,
     });
 

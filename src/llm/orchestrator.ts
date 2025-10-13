@@ -43,7 +43,7 @@ export async function generateTemplate(
 }
 
 /**
- * Infer manifest from image
+ * Infer manifest from image - DIVINE RULE: Always use user's approved schema
  */
 export async function inferManifest(params: {
   imageUrl: string;
@@ -52,6 +52,9 @@ export async function inferManifest(params: {
   jsonSchema?: Record<string, unknown>;
   csvSchema?: string;
   csvDelimiter?: "comma" | "semicolon";
+  yamlSchema?: string;
+  xmlSchema?: string;
+  plainTextSchema?: string;
   modelProfile?: ModelProfile;
 }): Promise<{
   manifest: Record<string, unknown>;
@@ -66,13 +69,20 @@ export async function inferManifest(params: {
     jsonSchema,
     csvSchema,
     csvDelimiter,
+    yamlSchema,
+    xmlSchema,
+    plainTextSchema,
     modelProfile = "managed-default",
   } = params;
 
   try {
-    // For CSV format with schema, use special CSV inference path
+    // DIVINE RULE ENFORCEMENT: Use format-specific schema
+    let effectiveJsonSchema = jsonSchema;
+    let result: { manifest: Record<string, unknown>; latencyMs: number; tokensUsed?: number };
+
+    // CSV: Parse headers and create schema
     if (format === "csv" && csvSchema) {
-      const result = await openai.inferManifest(
+      result = await openai.inferManifest(
         imageUrl,
         instructions,
         format,
@@ -81,7 +91,6 @@ export async function inferManifest(params: {
         csvDelimiter
       );
 
-      // Convert to CSV string with proper delimiter
       const delimiter = csvDelimiter === "semicolon" ? ";" : ",";
       const manifestString = convertToCSVWithSchema(result.manifest, csvSchema, delimiter);
 
@@ -93,11 +102,64 @@ export async function inferManifest(params: {
       };
     }
 
-    // Default path: Always infer as JSON first (structured)
-    const result =
+    // YAML: Parse user's YAML template and extract schema
+    if (format === "yaml" && yamlSchema) {
+      try {
+        const parsedYaml = yaml.load(yamlSchema) as Record<string, unknown>;
+        effectiveJsonSchema = parsedYaml; // Use parsed YAML as JSON schema template
+        logger.info("Using YAML schema for inference", {
+          schema_keys: Object.keys(parsedYaml),
+        });
+      } catch (error) {
+        logger.warn("Failed to parse YAML schema, falling back to json_schema", { error });
+      }
+    }
+
+    // XML: Parse user's XML template and extract schema
+    if (format === "xml" && xmlSchema) {
+      try {
+        const parsedXml = xmlJs.xml2js(xmlSchema, { compact: true }) as Record<string, unknown>;
+        effectiveJsonSchema = parsedXml; // Use parsed XML as JSON schema template
+        logger.info("Using XML schema for inference", {
+          schema_keys: Object.keys(parsedXml),
+        });
+      } catch (error) {
+        logger.warn("Failed to parse XML schema, falling back to json_schema", { error });
+      }
+    }
+
+    // Plain Text: Extract headings from markdown template
+    if (format === "text" && plainTextSchema) {
+      try {
+        const headings = extractMarkdownHeadings(plainTextSchema);
+        // Create JSON schema from headings
+        const properties: Record<string, unknown> = {};
+        headings.forEach(heading => {
+          const key = heading.text.toLowerCase().replace(/[^a-z0-9]/g, '_');
+          properties[key] = {
+            type: "string",
+            description: heading.text
+          };
+        });
+        effectiveJsonSchema = {
+          type: "object",
+          properties,
+          required: Object.keys(properties),
+          additionalProperties: false
+        };
+        logger.info("Using Plain Text schema for inference", {
+          headings: headings.map(h => h.text),
+        });
+      } catch (error) {
+        logger.warn("Failed to parse Plain Text schema, falling back to json_schema", { error });
+      }
+    }
+
+    // Infer as JSON with effective schema
+    result =
       modelProfile === "oss-detector"
-        ? await oss.inferManifestOSS(imageUrl, instructions, "json", jsonSchema)
-        : await openai.inferManifest(imageUrl, instructions, "json", jsonSchema);
+        ? await oss.inferManifestOSS(imageUrl, instructions, "json", effectiveJsonSchema)
+        : await openai.inferManifest(imageUrl, instructions, "json", effectiveJsonSchema);
 
     // Convert to requested format
     const manifestString =
@@ -118,6 +180,27 @@ export async function inferManifest(params: {
     });
     throw error;
   }
+}
+
+/**
+ * Extract markdown headings from plain text schema
+ */
+function extractMarkdownHeadings(markdown: string): Array<{ level: number; text: string }> {
+  const lines = markdown.split('\n');
+  const headings: Array<{ level: number; text: string }> = [];
+
+  lines.forEach(line => {
+    const trimmed = line.trim();
+    const match = trimmed.match(/^(#{1,6})\s+(.+)$/);
+    if (match) {
+      headings.push({
+        level: match[1].length,
+        text: match[2].trim()
+      });
+    }
+  });
+
+  return headings;
 }
 
 /**
