@@ -308,8 +308,8 @@ export default function PatternDetailPage() {
         throw new Error("Failed to get upload URL");
       }
 
-      const { url: signedUrl, upload_path: uploadPath } =
-        await signedUrlResponse.json();
+      const { data: signedUrlData } = await signedUrlResponse.json();
+      const { url: signedUrl, upload_path: uploadPath } = signedUrlData;
 
       // Step 2: Upload file to signed URL
       setUploadProgress(40);
@@ -350,7 +350,8 @@ export default function PatternDetailPage() {
         throw new Error(errorData.error?.message || "Failed to enqueue job");
       }
 
-      const { job_id } = await ingestResponse.json();
+      const { data } = await ingestResponse.json();
+      const { job_id } = data;
       setUploadProgress(100);
 
       // Start polling for job status
@@ -393,7 +394,7 @@ export default function PatternDetailPage() {
         throw new Error("Failed to fetch job status");
       }
 
-      const job: Job = await response.json();
+      const { data: job } = await response.json();
       setCurrentJob(job);
 
       // Stop polling if job is complete
