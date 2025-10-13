@@ -947,7 +947,7 @@ export default function NewPatternPage() {
             {/* JSON Schema */}
             <div>
               <label className="text-sm font-medium mb-2 flex items-center justify-between">
-                <span>JSON Schema (Optional)</span>
+                <span>{format.toUpperCase()} Schema (Optional)</span>
                 {jsonSchema && (
                   <button
                     onClick={handleCopySchemaToTemplate}

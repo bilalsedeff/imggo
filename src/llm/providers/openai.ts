@@ -28,7 +28,45 @@ export async function generateTemplate(
   try {
     logger.info("Generating template with OpenAI", { format });
 
-    const systemPrompt = `You are an expert at creating data extraction schemas for image analysis.
+    // Format-specific system prompts
+    let systemPrompt: string;
+    let userPrompt: string;
+
+    if (format === "text") {
+      // Special handling for Plain Text - create STRUCTURED template with consistent headings
+      systemPrompt = `You are an expert at creating structured data extraction templates for image analysis.
+
+For Plain Text format, create a STRUCTURED TEMPLATE with CONSISTENT MARKDOWN HEADINGS that will serve as a PATTERN for analyzing EVERY image.
+
+CRITICAL REQUIREMENTS:
+1. **Use Markdown Heading Syntax**: # for main sections, ## for sub-sections, ### for sub-sub-sections
+2. **Extract Section Names from Instructions**: Identify the key categories/aspects mentioned in the instructions
+3. **Create Fixed Structure**: These headings will stay THE SAME for every image analyzed
+4. **Use Placeholders**: Under each heading, write "[To be determined from image]" or similar placeholder
+5. **Think Pattern/Form**: This is a FORM with fixed sections that will be filled differently for each image
+6. **Minimum 1 Heading**: Always have at least one main section
+
+EXAMPLE (for art analysis):
+# Art Type
+[To be determined from image]
+
+# Historical Period
+[To be determined from image]
+
+# Color Palette
+[To be determined from image]
+
+# Dominant Emotions
+[To be determined from image]
+
+Respond ONLY with the structured template using markdown headings, no explanations.`;
+
+      userPrompt = `User Instructions: ${instructions}
+
+Analyze these instructions and create a STRUCTURED Plain Text template with markdown headings that will be used consistently for analyzing every image. Extract the key analysis categories and create fixed section headings.`;
+    } else {
+      // Default prompt for other formats
+      systemPrompt = `You are an expert at creating data extraction schemas for image analysis.
 Given user instructions, create a complete example output in ${format.toUpperCase()} format that demonstrates the expected structure.
 
 The output should be:
@@ -40,10 +78,11 @@ ${jsonSchema ? "- Conform to the provided JSON schema" : ""}
 
 Respond ONLY with the example output, no explanations.`;
 
-    const userPrompt = `Instructions: ${instructions}
+      userPrompt = `Instructions: ${instructions}
 ${jsonSchema ? `\nJSON Schema:\n${JSON.stringify(jsonSchema, null, 2)}` : ""}
 
 Generate a complete example output in ${format.toUpperCase()} format:`;
+    }
 
     const response = await openai.chat.completions.create({
       model: MODEL,
