@@ -80,6 +80,10 @@ export default function PatternDetailPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  // Preview mode state
+  const [previewVersion, setPreviewVersion] = useState<PatternVersion | null>(null);
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+
   // Upload state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
@@ -181,11 +185,26 @@ export default function PatternDetailPage() {
     setTimeout(() => setCopiedItem(null), 2000);
   };
 
-  const handleSwitchVersion = async (targetVersion: number) => {
-    if (!session?.access_token || !patternId) return;
+  // Preview a version (read-only, doesn't change active version)
+  const handlePreviewVersion = (targetVersion: number) => {
+    const versionToPreview = versions.find(v => v.version === targetVersion);
+    if (!versionToPreview) return;
+
+    setPreviewVersion(versionToPreview);
+    setShowVersionDropdown(false);
+  };
+
+  // Exit preview mode
+  const handleExitPreview = () => {
+    setPreviewVersion(null);
+  };
+
+  // Use/Restore a version (makes it active)
+  const handleUseVersion = async () => {
+    if (!session?.access_token || !patternId || !previewVersion) return;
 
     setIsSwitchingVersion(true);
-    setShowVersionDropdown(false);
+    setShowRestoreConfirm(false);
 
     try {
       const response = await fetch(`/api/patterns/${patternId}/versions/switch`, {
@@ -194,12 +213,13 @@ export default function PatternDetailPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ version: targetVersion }),
+        body: JSON.stringify({ version: previewVersion.version }),
       });
 
       if (response.ok) {
         const result = await response.json();
         setPattern(result.data.pattern);
+        setPreviewVersion(null); // Exit preview mode
         // Refresh versions
         const versionsResponse = await fetch(`/api/patterns/${patternId}/versions`, {
           headers: {
