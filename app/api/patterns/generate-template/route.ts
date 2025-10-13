@@ -10,6 +10,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const {
+      name,
       instructions,
       format,
       csvDelimiter,
@@ -70,9 +71,13 @@ Please modify the current template according to the follow-up request while main
         user_id: user.userId,
         format,
         instructionsLength: instructions.length,
+        hasName: Boolean(name),
       });
 
-      promptToUse = instructions;
+      // Include pattern name in prompt if provided
+      promptToUse = name && name.trim()
+        ? `Pattern Name: ${name}\n\nInstructions: ${instructions}`
+        : instructions;
     }
 
     // Call OpenAI to generate template

@@ -302,12 +302,97 @@ Analyze this image and extract the information in the exact structure specified.
 }
 
 /**
+ * Convert example JSON to JSON Schema
+ * Infers schema structure from example data
+ */
+function convertExampleToJsonSchema(example: any): Record<string, unknown> {
+  // Handle null
+  if (example === null) {
+    return { type: "null" };
+  }
+
+  // Handle arrays
+  if (Array.isArray(example)) {
+    return {
+      type: "array",
+      items: example.length > 0 ? convertExampleToJsonSchema(example[0]) : { type: "string" }
+    };
+  }
+
+  // Handle objects
+  if (typeof example === "object") {
+    const properties: Record<string, unknown> = {};
+    const required: string[] = [];
+
+    for (const [key, value] of Object.entries(example)) {
+      properties[key] = convertExampleToJsonSchema(value);
+      required.push(key);
+    }
+
+    return {
+      type: "object",
+      properties,
+      required,
+      additionalProperties: false
+    };
+  }
+
+  // Primitive types
+  if (typeof example === "string") return { type: "string" };
+  if (typeof example === "number") return { type: "number" };
+  if (typeof example === "boolean") return { type: "boolean" };
+
+  // Fallback
+  return { type: "string" };
+}
+
+/**
+ * Detect if input is example JSON (not JSON Schema)
+ * JSON Schema has "type" and optionally "properties" at root or nested levels
+ */
+function isExampleJson(input: Record<string, unknown>): boolean {
+  // If it has "type" field at root, it's likely a JSON Schema
+  if (input.type) {
+    return false;
+  }
+
+  // If it has "properties" and "type" is missing, it might be a schema fragment
+  if (input.properties && typeof input.properties === "object") {
+    return false;
+  }
+
+  // Check if any nested object has schema-like structure
+  for (const value of Object.values(input)) {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const nested = value as Record<string, unknown>;
+      if (nested.type || nested.properties) {
+        return false; // Has schema structure
+      }
+    }
+  }
+
+  // Otherwise, it's example JSON
+  return true;
+}
+
+/**
  * Create structured output schema from JSON Schema
  * Recursively ensures all objects have additionalProperties: false for OpenAI strict mode
+ * Also handles conversion of example JSON to JSON Schema
  */
 function createStructuredOutputSchema(
   jsonSchema: Record<string, unknown>
 ): Record<string, unknown> {
+  // CRITICAL: Detect if this is example JSON instead of JSON Schema
+  if (isExampleJson(jsonSchema)) {
+    logger.info("Detected example JSON, converting to JSON Schema");
+    const converted = convertExampleToJsonSchema(jsonSchema);
+    logger.info("Conversion complete", {
+      hasProperties: Boolean(converted && typeof converted === 'object' && 'properties' in converted)
+    });
+    // Continue processing the converted schema
+    jsonSchema = converted as Record<string, unknown>;
+  }
   // Recursively process schema to add additionalProperties: false to all objects
   const processSchema = (schema: any): any => {
     if (!schema || typeof schema !== "object") {
