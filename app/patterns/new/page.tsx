@@ -696,7 +696,11 @@ export default function NewPatternPage() {
           }
         }
 
-        console.log("Create payload:", JSON.stringify(newPatternSchema, null, 2));
+        console.log("=== PATTERN STUDIO CREATE PAYLOAD ===");
+        console.log("Format:", format);
+        console.log("CSV Schema:", newPatternSchema.csv_schema ? String(newPatternSchema.csv_schema).substring(0, 300) : "NULL");
+        console.log("Full Payload:", JSON.stringify(newPatternSchema, null, 2));
+        console.log("=====================================");
 
         const response = await fetch("/api/patterns", {
           method: "POST",

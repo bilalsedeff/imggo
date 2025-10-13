@@ -42,7 +42,20 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     name: input.name,
     format: input.format,
     has_json_schema: !!input.json_schema,
+    has_csv_schema: !!input.csv_schema,
+    has_yaml_schema: !!input.yaml_schema,
+    has_xml_schema: !!input.xml_schema,
+    has_plain_text_schema: !!input.plain_text_schema,
   });
+
+  // Log the actual schemas being received
+  console.log("=== PATTERN CREATE INPUT ===");
+  console.log("Format:", input.format);
+  console.log("CSV Schema:", input.csv_schema ? input.csv_schema.substring(0, 200) : "NULL");
+  console.log("YAML Schema:", input.yaml_schema ? input.yaml_schema.substring(0, 200) : "NULL");
+  console.log("XML Schema:", input.xml_schema ? input.xml_schema.substring(0, 200) : "NULL");
+  console.log("Plain Text Schema:", input.plain_text_schema ? input.plain_text_schema.substring(0, 200) : "NULL");
+  console.log("===========================");
 
   // Auto-generate JSON schema if missing (required for all formats)
   if (!input.json_schema) {
