@@ -754,37 +754,72 @@ export default function NewPatternPage() {
     setSuccess("");
 
     try {
-      // If updating existing pattern, warn user about draft behavior
-      if (selectedPatternId) {
-        setSuccess(
-          `Draft saved locally. Note: The published version ${(activePatterns.find(p => p.id === selectedPatternId)?.version || 0)} remains active until you publish.`
-        );
-        setTimeout(() => setSuccess(""), 5000);
-      } else {
-        setSuccess("Draft saved successfully!");
-        setTimeout(() => setSuccess(""), 3000);
-      }
-
-      const draftData = {
-        name: name || "Untitled Draft",
-        format,
-        instructions,
-        original_instructions: originalInstructions || null,
-        json_schema: jsonSchema || null,
-        template: template || null,
-        pattern_id: selectedPatternId || null, // Store which pattern this is a draft for
+      // Clean markdown code blocks from template
+      const cleanTemplate = (text: string): string => {
+        return text
+          .replace(/```json\s*/g, '')
+          .replace(/```yaml\s*/g, '')
+          .replace(/```xml\s*/g, '')
+          .replace(/```csv\s*/g, '')
+          .replace(/```\s*/g, '')
+          .trim();
       };
 
-      // Save to localStorage
-      const drafts = JSON.parse(localStorage.getItem("pattern_drafts") || "[]");
-      const draftId = Date.now().toString();
-      drafts.push({
-        id: draftId,
-        ...draftData,
-        created_at: new Date().toISOString(),
-        user_id: session.user?.id,
+      // Prepare schema based on format
+      const schemaData: Record<string, unknown> = {};
+
+      if (template) {
+        const cleaned = cleanTemplate(template);
+
+        if (format === "json") {
+          try {
+            schemaData.json_schema = JSON.parse(cleaned);
+          } catch {
+            // If parse fails, save as string
+            schemaData.json_schema = cleaned;
+          }
+        } else if (format === "yaml") {
+          schemaData.yaml_schema = cleaned;
+        } else if (format === "xml") {
+          schemaData.xml_schema = cleaned;
+        } else if (format === "csv") {
+          schemaData.csv_schema = cleaned;
+        } else if (format === "text") {
+          schemaData.plain_text_schema = cleaned;
+        }
+      }
+
+      // Draft payload: version = 0, is_active = false
+      const draftPayload = {
+        name: name.trim() || "Untitled Draft",
+        format,
+        instructions: originalInstructions || instructions,
+        ...schemaData,
+        version: 0, // CRITICAL: Drafts have version 0
+        is_active: false, // CRITICAL: Drafts are inactive
+      };
+
+      const response = await fetch("/api/patterns", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify(draftPayload),
       });
-      localStorage.setItem("pattern_drafts", JSON.stringify(drafts));
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error?.message || "Failed to save draft");
+      }
+
+      const result = await response.json();
+      setSuccess(`Draft "${name || "Untitled"}" saved successfully!`);
+
+      // Redirect to patterns page after 1.5s
+      setTimeout(() => {
+        router.push("/patterns");
+      }, 1500);
     } catch (err) {
       console.error("Save draft error:", err);
       setError(err instanceof Error ? err.message : "Failed to save draft");
