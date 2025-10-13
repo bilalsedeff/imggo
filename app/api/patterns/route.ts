@@ -16,11 +16,19 @@ import { CreatePatternSchema } from "@/schemas/pattern";
 import { ListPatternsQuerySchema } from "@/schemas/api";
 import * as patternService from "@/services/patternService";
 import { logger } from "@/lib/logger";
+import { checkRateLimitOrFail } from "@/middleware/rateLimit";
 
 const BASE_URL = process.env.APP_BASE_URL || "http://localhost:3000";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const user = await requireAuth(request);
+
+  // Rate limiting check (10 patterns per hour)
+  const rateLimitResponse = await checkRateLimitOrFail(
+    request,
+    "patterns.create"
+  );
+  if (rateLimitResponse) return rateLimitResponse;
 
   const input = await parseBody(request, CreatePatternSchema);
 

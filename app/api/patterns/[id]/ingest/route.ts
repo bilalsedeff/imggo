@@ -16,6 +16,7 @@ import { IngestRequestSchema } from "@/schemas/manifest";
 import * as patternService from "@/services/patternService";
 import * as jobService from "@/services/jobService";
 import { logger } from "@/lib/logger";
+import { checkRateLimitOrFail } from "@/middleware/rateLimit";
 
 export const POST = withErrorHandling(
   async (
@@ -24,6 +25,14 @@ export const POST = withErrorHandling(
   ) => {
     if (!context) throw new ApiError("Missing params", 400);
     const user = await requireAuth(request);
+
+    // Rate limiting check (100 images per 10 min sustained)
+    const rateLimitResponse = await checkRateLimitOrFail(
+      request,
+      "patterns.ingest"
+    );
+    if (rateLimitResponse) return rateLimitResponse;
+
     const { id: patternId } = await context.params;
     if (!patternId) throw new ApiError("Missing pattern ID", 400);
 

@@ -267,12 +267,12 @@ export default function PatternDetailPage() {
     validateAndSetFile(file);
   };
 
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDragOver = (e: React.DragEvent<HTMLLabelElement>) => {
     e.preventDefault();
     e.stopPropagation();
   };
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = (e: React.DragEvent<HTMLLabelElement>) => {
     e.preventDefault();
     e.stopPropagation();
 
@@ -410,7 +410,7 @@ export default function PatternDetailPage() {
     }
   };
 
-  const downloadManifest = () => {
+  const downloadManifest = (): void => {
     if (!currentJob?.manifest) return;
 
     const blob = new Blob([JSON.stringify(currentJob.manifest, null, 2)], {
@@ -642,19 +642,6 @@ print(result)`
             </h2>
             <p className="text-sm whitespace-pre-wrap">{pattern.instructions}</p>
           </div>
-
-          {/* JSON Schema */}
-          {pattern.json_schema && (
-            <div className="border border-border rounded-lg p-6 mb-6">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                <Code className="w-5 h-5" />
-                JSON Schema
-              </h2>
-              <pre className="bg-muted p-4 rounded-lg text-xs overflow-x-auto">
-                {JSON.stringify(pattern.json_schema, null, 2)}
-              </pre>
-            </div>
-          )}
 
           {/* Pattern Schema Preview */}
           {(() => {
