@@ -142,6 +142,19 @@ export default function NewPatternPage() {
     }
   }, []);
 
+  // Clear template when format changes (to prevent format mismatch)
+  useEffect(() => {
+    // Only clear if template already exists (skip initial mount)
+    if (template && !selectedPatternId) {
+      setTemplate("");
+      setIsValidated(false);
+      setValidationErrors([]);
+      setIsTemplateEditable(false);
+      setError("");
+      setMarkdownError("");
+    }
+  }, [format]); // Run when format changes
+
   // Handle pattern selection
   const handlePatternSelect = async (patternId: string) => {
     if (patternId === "new") {
