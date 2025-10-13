@@ -147,7 +147,8 @@ export async function inferManifest(
   format: ManifestFormat,
   jsonSchema?: Record<string, unknown>,
   csvSchema?: string,
-  csvDelimiter?: "comma" | "semicolon"
+  csvDelimiter?: "comma" | "semicolon",
+  imageFilename?: string
 ): Promise<{
   manifest: Record<string, unknown>;
   latencyMs: number;
@@ -159,6 +160,7 @@ export async function inferManifest(
     logger.info("Inferring manifest from image", {
       image_url_hash: hashUrl(imageUrl),
       format,
+      has_filename: Boolean(imageFilename),
     });
 
     // For CSV format with csv_schema, create dynamic schema from headers
@@ -220,6 +222,7 @@ CRITICAL CSV REQUIREMENTS:
       userPrompt = `${instructions}
 
 CSV Column Headers: ${headers.join(delimiter + ' ')}
+${imageFilename ? `\nImage Filename: ${imageFilename}` : ''}
 
 Analyze this image and extract all data that matches these columns. Return an array of objects, one for each data point/event you observe.`;
 
@@ -239,6 +242,7 @@ IMPORTANT:
 - Extract all requested information`;
 
       userPrompt = `${instructions}
+${imageFilename ? `\nImage Filename: ${imageFilename}` : ''}
 
 Analyze this image and extract the information in the exact structure specified.`;
     }

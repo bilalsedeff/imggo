@@ -67,9 +67,13 @@ export async function processImage(
     // Import orchestrator for proper format handling
     const { inferManifest: orchestratorInferManifest } = await import("@/llm/orchestrator");
 
+    // Extract filename from imageUrl for better AI context
+    const imageFilename = imageUrl.split('/').pop() || 'image';
+
     // DIVINE RULE: Infer manifest using ALL format-specific schemas
     const { manifest, manifestString, latencyMs } = await orchestratorInferManifest({
       imageUrl,
+      imageFilename,
       instructions: pattern.instructions,
       format: pattern.format as any,
       jsonSchema: pattern.json_schema || undefined,

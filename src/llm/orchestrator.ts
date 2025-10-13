@@ -47,6 +47,7 @@ export async function generateTemplate(
  */
 export async function inferManifest(params: {
   imageUrl: string;
+  imageFilename?: string;
   instructions: string;
   format: ManifestFormat;
   jsonSchema?: Record<string, unknown>;
@@ -64,6 +65,7 @@ export async function inferManifest(params: {
 }> {
   const {
     imageUrl,
+    imageFilename,
     instructions,
     format,
     jsonSchema,
@@ -88,7 +90,8 @@ export async function inferManifest(params: {
         format,
         jsonSchema,
         csvSchema,
-        csvDelimiter
+        csvDelimiter,
+        imageFilename
       );
 
       const delimiter = csvDelimiter === "semicolon" ? ";" : ",";
@@ -159,7 +162,7 @@ export async function inferManifest(params: {
     result =
       modelProfile === "oss-detector"
         ? await oss.inferManifestOSS(imageUrl, instructions, "json", effectiveJsonSchema)
-        : await openai.inferManifest(imageUrl, instructions, "json", effectiveJsonSchema);
+        : await openai.inferManifest(imageUrl, instructions, "json", effectiveJsonSchema, undefined, undefined, imageFilename);
 
     // Convert to requested format
     const manifestString =
