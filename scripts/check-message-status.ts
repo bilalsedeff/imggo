@@ -1,7 +1,15 @@
 import { Client } from "pg";
+import { config } from "dotenv";
+import { resolve } from "path";
 
-const DATABASE_URL = process.env.DATABASE_URL ||
-  "postgresql://postgres.bgdlalagnctabfiyimpt:Bs139568@aws-1-us-east-1.pooler.supabase.com:5432/postgres";
+config({ path: resolve(process.cwd(), ".env") });
+
+const DATABASE_URL = process.env.DATABASE_URL;
+
+if (!DATABASE_URL) {
+  console.error("❌ DATABASE_URL is required in .env file");
+  process.exit(1);
+}
 
 async function main() {
   const client = new Client({ connectionString: DATABASE_URL });

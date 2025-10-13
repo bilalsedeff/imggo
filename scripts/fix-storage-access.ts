@@ -107,8 +107,8 @@ async function main() {
 
   console.log("\n✅ Done! Run these commands to process:");
   console.log(`
-curl -X POST "https://bgdlalagnctabfiyimpt.supabase.co/functions/v1/worker" \\
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJnZGxhbGFnbmN0YWJmaXlpbXB0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAwNzcwODAsImV4cCI6MjA3NTY1MzA4MH0.uUcuVjZ70zdRlQpw83LPMYHAwzN3_xmx3xvcJ0McY7c" \\
+curl -X POST "${SUPABASE_URL}/functions/v1/worker" \\
+  -H "Authorization: Bearer YOUR_ANON_KEY" \\
   -H "Content-Type: application/json"
 
 npx tsx scripts/check-jobs.ts
