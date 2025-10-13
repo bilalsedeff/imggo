@@ -81,11 +81,31 @@ function convertToXML(manifest: Record<string, unknown>): string {
 
 /**
  * Convert JSON to CSV
- * Flattens nested objects and converts to tabular format
+ * Handles both rows-based format (from CSV schema inference) and flat objects
  */
 function convertToCSV(manifest: Record<string, unknown>): string {
   try {
-    // Flatten nested objects
+    // NEW CSV FORMAT: If manifest has "rows" array, use it directly
+    if (manifest.rows && Array.isArray(manifest.rows) && manifest.rows.length > 0) {
+      const rows = manifest.rows as Record<string, unknown>[];
+
+      // Extract all unique keys from all rows
+      const allKeys = new Set<string>();
+      rows.forEach(row => {
+        Object.keys(row).forEach(key => allKeys.add(key));
+      });
+
+      const fields = Array.from(allKeys);
+
+      const parser = new Parser({
+        fields,
+        header: true,
+      });
+
+      return parser.parse(rows);
+    }
+
+    // LEGACY FORMAT: Flatten nested objects for backward compatibility
     const flattened = flattenObject(manifest);
 
     // Convert to array of objects for CSV
