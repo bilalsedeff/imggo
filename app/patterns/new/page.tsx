@@ -19,6 +19,8 @@ import {
 import { Navbar } from "@/ui/components/navbar";
 import Link from "next/link";
 
+import { PATTERN_LIMITS, validateMarkdownHeadings } from "@/schemas/pattern";
+
 type ManifestFormat = "json" | "yaml" | "xml" | "csv" | "text";
 
 interface ValidationError {
@@ -59,6 +61,7 @@ export default function NewPatternPage() {
   const [isTemplateEditable, setIsTemplateEditable] = useState(false);
   const [isValidated, setIsValidated] = useState(false);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
+  const [markdownError, setMarkdownError] = useState<string>("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [showMenu, setShowMenu] = useState(false);
@@ -398,6 +401,7 @@ export default function NewPatternPage() {
   const handleValidate = () => {
     // Always reset state at the beginning
     setValidationErrors([]);
+    setMarkdownError("");
     setError("");
     setIsValidated(false);
 
@@ -416,6 +420,12 @@ export default function NewPatternPage() {
       } else if (format === "csv") {
         // Basic CSV validation
         if (!template.trim()) throw new Error("Empty CSV");
+      } else if (format === "text") {
+        // Plain Text markdown heading validation
+        const validation = validateMarkdownHeadings(template);
+        if (!validation.valid) {
+          throw new Error(validation.error);
+        }
       }
 
       // If we get here, validation succeeded
@@ -424,6 +434,7 @@ export default function NewPatternPage() {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Validation failed";
       setError(errorMessage);
+      setMarkdownError(errorMessage);
 
       // Try to extract line number from error
       const lineMatch = errorMessage.match(/line (\d+)/i) || errorMessage.match(/position (\d+)/i);
@@ -908,11 +919,6 @@ export default function NewPatternPage() {
                 <div className="flex items-center gap-2">
                   <Lightbulb className="w-4 h-4" />
                   <span>{originalInstructions ? "Follow-up Request" : "Instructions"}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {originalInstructions
-                      ? instructions.length === 0 ? "(optional)" : `(${instructions.length} chars)`
-                      : `(min. 30 characters: ${instructions.length}/30)`}
-                  </span>
                 </div>
                 {template && (
                   <button
@@ -939,9 +945,33 @@ export default function NewPatternPage() {
                   ((originalInstructions && instructions.length < 10) ||
                     (!originalInstructions && instructions.length < 30))
                     ? "border-destructive"
+                    : instructions.length > PATTERN_LIMITS.INSTRUCTIONS_MAX
+                    ? "border-destructive"
                     : "border-border"
                 }`}
               />
+              <div className="flex items-center justify-between mt-1">
+                <span className={`text-xs ${
+                  instructions.length > PATTERN_LIMITS.INSTRUCTIONS_MAX
+                    ? "text-destructive font-medium"
+                    : instructions.length > PATTERN_LIMITS.INSTRUCTIONS_MAX * 0.9
+                    ? "text-yellow-600 dark:text-yellow-400"
+                    : "text-muted-foreground"
+                }`}>
+                  {originalInstructions
+                    ? instructions.length === 0 ? "Optional" : `${instructions.length} characters`
+                    : instructions.length < 30
+                    ? `Min. 30 characters (${instructions.length}/30)`
+                    : `${instructions.length} characters`}
+                </span>
+                <span className={`text-xs ${
+                  instructions.length > PATTERN_LIMITS.INSTRUCTIONS_MAX
+                    ? "text-destructive font-medium"
+                    : "text-muted-foreground"
+                }`}>
+                  Max: {PATTERN_LIMITS.INSTRUCTIONS_MAX}
+                </span>
+              </div>
             </div>
 
             {/* JSON Schema */}
@@ -963,8 +993,23 @@ export default function NewPatternPage() {
                 onChange={(e) => setJsonSchema(e.target.value)}
                 placeholder='{"type": "object", "properties": {...}}'
                 rows={8}
-                className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-background resize-none font-mono text-sm"
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-background resize-none font-mono text-sm ${
+                  jsonSchema.length > PATTERN_LIMITS.SCHEMA_MAX
+                    ? "border-destructive"
+                    : "border-border"
+                }`}
               />
+              <div className="flex items-center justify-end mt-1">
+                <span className={`text-xs ${
+                  jsonSchema.length > PATTERN_LIMITS.SCHEMA_MAX
+                    ? "text-destructive font-medium"
+                    : jsonSchema.length > PATTERN_LIMITS.SCHEMA_MAX * 0.9
+                    ? "text-yellow-600 dark:text-yellow-400"
+                    : "text-muted-foreground"
+                }`}>
+                  {jsonSchema.length} / {PATTERN_LIMITS.SCHEMA_MAX} characters
+                </span>
+              </div>
             </div>
           </div>
 
@@ -1076,6 +1121,38 @@ export default function NewPatternPage() {
                         </li>
                       ))}
                     </ul>
+                  </div>
+                )}
+
+                {/* Markdown Error for Plain Text */}
+                {format === "text" && markdownError && !validationErrors.length && (
+                  <div className="mt-2 p-3 bg-destructive/10 border border-destructive/20 rounded text-sm text-destructive">
+                    <strong>Markdown Heading Error:</strong>
+                    <p className="mt-1">{markdownError}</p>
+                  </div>
+                )}
+
+                {/* Character Counter */}
+                {template && (
+                  <div className="flex items-center justify-between mt-2">
+                    <span className={`text-xs ${
+                      template.length > PATTERN_LIMITS.SCHEMA_MAX
+                        ? "text-destructive font-medium"
+                        : template.length > PATTERN_LIMITS.SCHEMA_MAX * 0.9
+                        ? "text-yellow-600 dark:text-yellow-400"
+                        : "text-muted-foreground"
+                    }`}>
+                      {template.length} / {PATTERN_LIMITS.SCHEMA_MAX} characters
+                    </span>
+                    {format === "text" && isTemplateEditable && (
+                      <button
+                        onClick={handleValidate}
+                        className="text-xs text-primary hover:text-primary/80 transition flex items-center gap-1"
+                      >
+                        <CheckCircle className="w-3 h-3" />
+                        <span>Validate Headings</span>
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

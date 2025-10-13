@@ -123,6 +123,20 @@ Respond ONLY with the JSON Schema.`,
       pattern_name: input.name,
       format: input.format,
     });
+
+    // Additional validation for Plain Text markdown headings
+    if (input.format === "text" && input.plain_text_schema) {
+      const { validateMarkdownHeadings } = await import("@/schemas/pattern");
+      const validation = validateMarkdownHeadings(input.plain_text_schema);
+      if (!validation.valid) {
+        logger.error("Plain Text schema validation failed", {
+          user_id: user.userId,
+          pattern_name: input.name,
+          error: validation.error,
+        });
+        throw new Error(validation.error);
+      }
+    }
   } else if (input.json_schema && input.format !== "json") {
     // Only generate if missing (e.g., API-only pattern creation)
     logger.info("Generating format-specific example (not provided from frontend)", {

@@ -18,16 +18,97 @@ export const PatternNameSchema = z
   .max(255, "Name too long")
   .regex(/^[a-zA-Z0-9\s\-_]+$/, "Name contains invalid characters");
 
+// Character limits for optimal AI performance
+export const PATTERN_LIMITS = {
+  INSTRUCTIONS_MAX: 2000,
+  SCHEMA_MAX: 5000,
+  TOTAL_MAX: 7000,
+} as const;
+
 export const InstructionsSchema = z
   .string()
   .min(10, "Instructions must be at least 10 characters")
-  .max(5000, "Instructions too long");
+  .max(PATTERN_LIMITS.INSTRUCTIONS_MAX, `Instructions cannot exceed ${PATTERN_LIMITS.INSTRUCTIONS_MAX} characters`);
 
 /**
  * JSON Schema validation (simplified)
  * Full JSON Schema validation would require json-schema library
  */
 export const JsonSchemaSchema = z.record(z.unknown()).nullable().optional();
+
+/**
+ * Validates markdown heading structure for Plain Text patterns
+ * Rules:
+ * 1. Must start with exactly one # (master heading)
+ * 2. Subsequent headings can increment by 1 level (# → ##, ## → ###)
+ * 3. Can go back to any previous level (### → ##, ### → #)
+ * 4. Cannot skip levels (# → ### is invalid, ## → #### is invalid)
+ */
+export function validateMarkdownHeadings(text: string): { valid: boolean; error?: string } {
+  const lines = text.split('\n');
+  const headings: { level: number; line: number; text: string }[] = [];
+
+  // Extract all headings
+  lines.forEach((line, index) => {
+    const trimmed = line.trim();
+    const match = trimmed.match(/^(#{1,6})\s+(.+)$/);
+    if (match) {
+      const level = match[1].length;
+      headings.push({ level, line: index + 1, text: match[2] });
+    }
+  });
+
+  // Must have at least one heading
+  if (headings.length === 0) {
+    return { valid: false, error: "Plain Text pattern must have at least one heading (# Main Heading)" };
+  }
+
+  // First heading must be level 1 (single #)
+  if (headings[0].level !== 1) {
+    return {
+      valid: false,
+      error: `First heading must be level 1 (single #). Found level ${headings[0].level} at line ${headings[0].line}`,
+    };
+  }
+
+  // Validate heading progression
+  for (let i = 1; i < headings.length; i++) {
+    const prev = headings[i - 1];
+    const curr = headings[i];
+
+    // Can stay same level or go back to any previous level
+    if (curr.level <= prev.level) {
+      continue;
+    }
+
+    // Can only increment by 1
+    if (curr.level > prev.level + 1) {
+      return {
+        valid: false,
+        error: `Invalid heading progression at line ${curr.line}: cannot jump from level ${prev.level} (${"#".repeat(prev.level)}) to level ${curr.level} (${"#".repeat(curr.level)}). Headings must increment by 1 level at a time.`,
+      };
+    }
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Plain Text Schema with markdown heading validation
+ */
+export const PlainTextSchemaValidator = z
+  .string()
+  .max(PATTERN_LIMITS.SCHEMA_MAX, `Schema cannot exceed ${PATTERN_LIMITS.SCHEMA_MAX} characters`)
+  .refine(
+    (text) => {
+      const result = validateMarkdownHeadings(text);
+      return result.valid;
+    },
+    (text) => {
+      const result = validateMarkdownHeadings(text);
+      return { message: result.error || "Invalid markdown heading structure" };
+    }
+  );
 
 /**
  * Publish Pattern Request
@@ -68,10 +149,10 @@ export const UpdatePatternSchema = z.object({
   format: ManifestFormatSchema.optional(),
   instructions: InstructionsSchema.optional(),
   json_schema: JsonSchemaSchema,
-  yaml_schema: z.string().optional(),
-  xml_schema: z.string().optional(),
-  csv_schema: z.string().optional(),
-  plain_text_schema: z.string().optional(),
+  yaml_schema: z.string().max(PATTERN_LIMITS.SCHEMA_MAX, `YAML schema cannot exceed ${PATTERN_LIMITS.SCHEMA_MAX} characters`).optional(),
+  xml_schema: z.string().max(PATTERN_LIMITS.SCHEMA_MAX, `XML schema cannot exceed ${PATTERN_LIMITS.SCHEMA_MAX} characters`).optional(),
+  csv_schema: z.string().max(PATTERN_LIMITS.SCHEMA_MAX, `CSV schema cannot exceed ${PATTERN_LIMITS.SCHEMA_MAX} characters`).optional(),
+  plain_text_schema: PlainTextSchemaValidator.optional(),
   is_active: z.boolean().optional(),
   publish_new_version: z.boolean().optional().default(false),
 });
