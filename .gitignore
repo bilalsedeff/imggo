@@ -53,8 +53,8 @@ next-env.d.ts
 *.db-wal
 test.db
 
-# Database Migrations (contains secrets)
-db/migrations/
+# Database Seeds (ignore if contains real user data)
+# db/seeds/
 
 
 # Misc
@@ -71,4 +71,4 @@ test-photos/
 .vscode/
 nul
 *.md
-docs/*.md
+docs/
