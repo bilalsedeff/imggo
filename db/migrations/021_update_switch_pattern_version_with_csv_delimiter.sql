@@ -1,5 +1,8 @@
 -- Update switch_to_pattern_version function to include csv_delimiter
 
+-- Drop the exact existing function signature (uuid, uuid, integer)
+DROP FUNCTION IF EXISTS public.switch_to_pattern_version(uuid, uuid, integer);
+
 CREATE OR REPLACE FUNCTION public.switch_to_pattern_version(
   p_pattern_id uuid,
   p_user_id uuid,
