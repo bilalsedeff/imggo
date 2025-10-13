@@ -118,6 +118,10 @@ const BaseCreatePatternSchema = z.object({
   format: ManifestFormatSchema.optional(),
   instructions: InstructionsSchema,
   json_schema: JsonSchemaSchema,
+  yaml_schema: z.string().max(PATTERN_LIMITS.SCHEMA_MAX, `YAML schema cannot exceed ${PATTERN_LIMITS.SCHEMA_MAX} characters`).nullable().optional(),
+  xml_schema: z.string().max(PATTERN_LIMITS.SCHEMA_MAX, `XML schema cannot exceed ${PATTERN_LIMITS.SCHEMA_MAX} characters`).nullable().optional(),
+  csv_schema: z.string().max(PATTERN_LIMITS.SCHEMA_MAX, `CSV schema cannot exceed ${PATTERN_LIMITS.SCHEMA_MAX} characters`).nullable().optional(),
+  plain_text_schema: PlainTextSchemaValidator.nullable().optional(),
   model_profile: ModelProfileSchema.optional(),
 });
 
@@ -126,6 +130,10 @@ export const CreatePatternSchema = BaseCreatePatternSchema.transform((data) => (
   format: (data.format ?? "json") as ManifestFormat,
   instructions: data.instructions,
   json_schema: data.json_schema,
+  yaml_schema: data.yaml_schema,
+  xml_schema: data.xml_schema,
+  csv_schema: data.csv_schema,
+  plain_text_schema: data.plain_text_schema,
   model_profile: data.model_profile ?? "managed-default",
 }));
 
