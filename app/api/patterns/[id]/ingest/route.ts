@@ -19,6 +19,7 @@ import { logger } from "@/lib/logger";
 import { requireAuthOrApiKey, getRequestIp } from "@/lib/auth-unified";
 import { enforceRateLimit, checkRateLimit, getRateLimitHeaders } from "@/middleware/rateLimitParametric";
 import { uploadToSupabaseStorage } from "@/services/storageService";
+import { convertManifest, getContentType, ManifestFormat } from "@/lib/formatConverter";
 import { z } from "zod";
 
 // Configure Vercel function timeout (Pro: 30s max)
@@ -184,12 +185,34 @@ export const POST = withErrorHandling(
           job_id: jobId,
           latency_ms: result.latencyMs,
           approach: "direct",
+          format: pattern.format,
         });
+
+        // Convert manifest to requested format
+        const manifestFormat = pattern.format as ManifestFormat;
+        const convertedManifest = convertManifest(result.manifest, manifestFormat);
+        const contentType = getContentType(manifestFormat);
 
         // Get current rate limit status for headers
         const rateLimitStatus = await checkRateLimit(authContext.userId, authContext);
         const rateLimitHeaders = getRateLimitHeaders(rateLimitStatus);
 
+        // For non-JSON formats, return plain text response
+        if (manifestFormat !== "json") {
+          const response = new Response(convertedManifest, {
+            status: 200,
+            headers: {
+              "Content-Type": contentType,
+              ...rateLimitHeaders,
+              "X-Job-Id": jobId,
+              "X-Latency-Ms": String(result.latencyMs),
+              "X-Approach": "direct",
+            },
+          });
+          return response;
+        }
+
+        // For JSON, return structured response
         const response = successResponse(
           {
             job_id: jobId,

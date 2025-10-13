@@ -49,14 +49,14 @@ interface PlanLimits {
 // ============================================================================
 
 const AVAILABLE_SCOPES = [
-  { value: "patterns:read", label: "View patterns", default: true },
-  { value: "patterns:write", label: "Create and update patterns", default: false },
-  { value: "patterns:ingest", label: "Submit images for processing", default: true },
-  { value: "patterns:delete", label: "Delete patterns", default: false },
-  { value: "jobs:read", label: "View job status and results", default: true },
-  { value: "webhooks:read", label: "View webhooks", default: false },
-  { value: "webhooks:write", label: "Create and update webhooks", default: false },
-  { value: "webhooks:delete", label: "Delete webhooks", default: false },
+  { value: "patterns:read", label: "View patterns", default: true, active: true },
+  { value: "patterns:write", label: "Create and update patterns", default: false, active: false },
+  { value: "patterns:ingest", label: "Submit images for processing", default: true, active: true },
+  { value: "patterns:delete", label: "Delete patterns", default: false, active: false },
+  { value: "jobs:read", label: "View job status and results", default: true, active: true },
+  { value: "webhooks:read", label: "View webhooks", default: false, active: false },
+  { value: "webhooks:write", label: "Create and update webhooks", default: false, active: false },
+  { value: "webhooks:delete", label: "Delete webhooks", default: false, active: false },
 ];
 
 // ============================================================================
@@ -464,16 +464,28 @@ function CreateApiKeyDialog({
               {AVAILABLE_SCOPES.map((scope) => (
                 <label
                   key={scope.value}
-                  className="flex items-start gap-3 p-3 border border-border rounded-lg hover:bg-accent/50 cursor-pointer transition"
+                  className={`flex items-start gap-3 p-3 border border-border rounded-lg transition ${
+                    scope.active
+                      ? "hover:bg-accent/50 cursor-pointer"
+                      : "opacity-60 cursor-not-allowed bg-muted/30"
+                  }`}
                 >
                   <input
                     type="checkbox"
                     checked={selectedScopes.includes(scope.value)}
-                    onChange={() => toggleScope(scope.value)}
-                    className="w-4 h-4 mt-0.5"
+                    onChange={() => scope.active && toggleScope(scope.value)}
+                    disabled={!scope.active}
+                    className="w-4 h-4 mt-0.5 disabled:cursor-not-allowed"
                   />
                   <div className="flex-1">
-                    <div className="font-mono text-sm">{scope.value}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-sm">{scope.value}</span>
+                      {!scope.active && (
+                        <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-medium">
+                          Coming Soon
+                        </span>
+                      )}
+                    </div>
                     <div className="text-xs text-muted-foreground">{scope.label}</div>
                   </div>
                 </label>
