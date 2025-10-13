@@ -58,7 +58,15 @@ export const PaginatedResponseSchema = <T extends z.ZodTypeAny>(
  * List patterns query
  */
 export const ListPatternsQuerySchema = BasePaginationQuerySchema.extend({
-  is_active: z.coerce.boolean().optional(),
+  is_active: z
+    .string()
+    .optional()
+    .transform((val) => {
+      if (val === undefined) return undefined;
+      if (val === "true") return true;
+      if (val === "false") return false;
+      return undefined;
+    }),
 }).transform((data) => ({
   page: data.page ?? 1,
   per_page: data.per_page ?? 20,

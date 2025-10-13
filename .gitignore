@@ -72,3 +72,4 @@ test-photos/
 nul
 *.md
 docs/
+check-api-key.ts

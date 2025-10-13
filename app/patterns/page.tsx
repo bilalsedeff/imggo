@@ -30,18 +30,12 @@ interface Pattern {
 
 export default function PatternsPage() {
   const { session } = useAuth();
-  const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [activeTab, setActiveTab] = useState<"published" | "drafts">("published");
+  const [drafts, setDrafts] = useState<Pattern[]>([]);
   const [patterns, setPatterns] = useState<Pattern[]>([]);
   const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
+  const [isLoadingDrafts, setIsLoadingDrafts] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    // Load drafts from localStorage
-    const storedDrafts = localStorage.getItem("pattern_drafts");
-    if (storedDrafts) {
-      setDrafts(JSON.parse(storedDrafts));
-    }
-  }, []);
 
   // Fetch published patterns from API
   useEffect(() => {
@@ -50,7 +44,7 @@ export default function PatternsPage() {
     const fetchPatterns = async () => {
       setIsLoadingPatterns(true);
       try {
-        const response = await fetch("/api/patterns", {
+        const response = await fetch("/api/patterns?is_active=true", {
           headers: {
             Authorization: `Bearer ${session.access_token}`,
           },
@@ -59,7 +53,9 @@ export default function PatternsPage() {
         if (response.ok) {
           const result = await response.json();
           // API returns {success: true, data: {data: [...], pagination: {...}}}
-          setPatterns(result.data?.data || []);
+          const allPatterns = result.data?.data || [];
+          // Filter: published patterns have version >= 1
+          setPatterns(allPatterns.filter((p: Pattern) => p.version >= 1));
         }
       } catch (err) {
         console.error("Failed to fetch patterns:", err);
@@ -71,10 +67,56 @@ export default function PatternsPage() {
     fetchPatterns();
   }, [session]);
 
-  const handleDeleteDraft = (id: string) => {
-    const updatedDrafts = drafts.filter((d) => d.id !== id);
-    setDrafts(updatedDrafts);
-    localStorage.setItem("pattern_drafts", JSON.stringify(updatedDrafts));
+  // Fetch drafts from database (version = 0)
+  useEffect(() => {
+    if (!session?.access_token) return;
+
+    const fetchDrafts = async () => {
+      setIsLoadingDrafts(true);
+      try {
+        const response = await fetch("/api/patterns?is_active=false", {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          const allInactive = result.data?.data || [];
+          // Filter: drafts have version = 0
+          setDrafts(allInactive.filter((p: Pattern) => p.version === 0));
+        }
+      } catch (err) {
+        console.error("Failed to fetch drafts:", err);
+      } finally {
+        setIsLoadingDrafts(false);
+      }
+    };
+
+    fetchDrafts();
+  }, [session]);
+
+  const handleDeleteDraft = async (id: string) => {
+    if (!session?.access_token) return;
+    if (!confirm("Are you sure you want to delete this draft?")) return;
+
+    try {
+      const response = await fetch(`/api/patterns/${id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (response.ok) {
+        // Remove from local state
+        setDrafts((prev) => prev.filter((d) => d.id !== id));
+      } else {
+        console.error("Failed to delete draft");
+      }
+    } catch (err) {
+      console.error("Error deleting draft:", err);
+    }
   };
 
   const handleToggleActive = async (patternId: string, currentStatus: boolean) => {
@@ -130,10 +172,47 @@ export default function PatternsPage() {
     }
   };
 
-  const handleLoadDraft = (draft: Draft) => {
-    // Store selected draft in sessionStorage to load in Pattern Studio
-    sessionStorage.setItem("loadDraft", JSON.stringify(draft));
-    window.location.href = "/patterns/new";
+  const handleLoadDraft = async (draftId: string) => {
+    if (!session?.access_token) return;
+
+    try {
+      // Fetch full draft details from API
+      const response = await fetch(`/api/patterns/${draftId}`, {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (!response.ok) {
+        console.error("Failed to load draft details");
+        return;
+      }
+
+      const result = await response.json();
+      const draft = result.data;
+
+      // Prepare draft data for Pattern Studio
+      const draftData = {
+        name: draft.name,
+        format: draft.format,
+        instructions: draft.instructions,
+        original_instructions: draft.instructions, // Store as original
+        json_schema: draft.json_schema ? JSON.stringify(draft.json_schema, null, 2) : "",
+        template:
+          draft.format === "json" && draft.json_schema ? JSON.stringify(draft.json_schema, null, 2) :
+          draft.format === "yaml" && draft.yaml_schema ? draft.yaml_schema :
+          draft.format === "xml" && draft.xml_schema ? draft.xml_schema :
+          draft.format === "csv" && draft.csv_schema ? draft.csv_schema :
+          draft.format === "text" && draft.plain_text_schema ? draft.plain_text_schema :
+          "",
+      };
+
+      // Store in sessionStorage
+      sessionStorage.setItem("loadDraft", JSON.stringify(draftData));
+      window.location.href = "/patterns/new";
+    } catch (err) {
+      console.error("Error loading draft:", err);
+    }
   };
 
   return (
@@ -156,166 +235,221 @@ export default function PatternsPage() {
             </Link>
           </div>
 
-          {/* Drafts Section */}
-          {drafts.length > 0 && (
-            <div className="mb-8">
-              <h2 className="text-xl font-semibold mb-4">Drafts</h2>
-              <div className="grid gap-4">
-                {drafts.map((draft) => (
-                  <div
-                    key={draft.id}
-                    className="border border-border rounded-lg p-4 hover:bg-accent/50 transition"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <FileText className="w-4 h-4 text-muted-foreground" />
-                          <h3 className="font-medium">{draft.name}</h3>
-                          <span className="text-xs px-2 py-0.5 bg-muted rounded uppercase">
-                            {draft.format}
-                          </span>
+          {/* Tab Navigation */}
+          <div className="mb-6 border-b border-border">
+            <div className="flex gap-6">
+              <button
+                onClick={() => setActiveTab("published")}
+                className={`pb-3 px-1 border-b-2 transition ${
+                  activeTab === "published"
+                    ? "border-primary text-primary font-medium"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Published Patterns
+                {patterns.length > 0 && (
+                  <span className="ml-2 text-xs px-2 py-0.5 bg-muted rounded">
+                    {patterns.length}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setActiveTab("drafts")}
+                className={`pb-3 px-1 border-b-2 transition ${
+                  activeTab === "drafts"
+                    ? "border-primary text-primary font-medium"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Draft Patterns
+                {drafts.length > 0 && (
+                  <span className="ml-2 text-xs px-2 py-0.5 bg-muted rounded">
+                    {drafts.length}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Published Patterns Tab Content */}
+          {activeTab === "published" && (
+            <div>
+              {isLoadingPatterns ? (
+                <div className="border border-border rounded-lg p-6">
+                  <div className="text-center py-12">
+                    <p className="text-muted-foreground">Loading patterns...</p>
+                  </div>
+                </div>
+              ) : patterns.length === 0 ? (
+                <div className="border border-border rounded-lg p-6">
+                  <div className="text-center py-12">
+                    <p className="text-muted-foreground mb-4">
+                      No patterns published yet
+                    </p>
+                    <Link
+                      href="/patterns/new"
+                      className="text-primary hover:underline"
+                    >
+                      Create your first pattern →
+                    </Link>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid gap-4">
+                  {patterns.map((pattern) => (
+                    <div
+                      key={pattern.id}
+                      className="border border-border rounded-lg p-4 hover:bg-accent/50 transition"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <FileText className="w-4 h-4 text-muted-foreground" />
+                            <h3 className="font-medium">{pattern.name}</h3>
+                            <span className="text-xs px-2 py-0.5 bg-muted rounded uppercase">
+                              {pattern.format}
+                            </span>
+                            <span className="text-xs px-2 py-0.5 bg-muted/50 rounded text-muted-foreground">
+                              v{pattern.version}
+                            </span>
+                            {pattern.is_active && (
+                              <span className="text-xs px-2 py-0.5 bg-green-500/10 text-green-600 rounded flex items-center gap-1">
+                                <CheckCircle className="w-3 h-3" />
+                                Active
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+                            {pattern.instructions}
+                          </p>
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-xs text-muted-foreground">
+                              Endpoint:
+                            </span>
+                            <code className="text-xs bg-muted px-2 py-1 rounded font-mono flex-1 truncate">
+                              {pattern.endpoint_url}
+                            </code>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(pattern.endpoint_url);
+                                setCopiedUrl(pattern.id);
+                                setTimeout(() => setCopiedUrl(null), 2000);
+                              }}
+                              className="p-1.5 hover:bg-accent rounded transition"
+                              title="Copy endpoint URL"
+                            >
+                              {copiedUrl === pattern.id ? (
+                                <CheckCircle className="w-4 h-4 text-green-600" />
+                              ) : (
+                                <Copy className="w-4 h-4" />
+                              )}
+                            </button>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Created {new Date(pattern.created_at).toLocaleDateString()}
+                          </p>
                         </div>
-                        <p className="text-sm text-muted-foreground line-clamp-2">
-                          {draft.instructions}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-2">
-                          Saved {new Date(draft.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleLoadDraft(draft)}
-                          className="p-2 hover:bg-accent rounded-lg transition"
-                          title="Continue editing"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteDraft(draft.id)}
-                          className="p-2 hover:bg-destructive/10 hover:text-destructive rounded-lg transition"
-                          title="Delete draft"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <Link
+                            href={`/patterns/${pattern.id}`}
+                            className="p-2 hover:bg-accent rounded-lg transition"
+                            title="View details"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                          </Link>
+                          <button
+                            onClick={() => handleToggleActive(pattern.id, pattern.is_active)}
+                            className={`p-2 rounded-lg transition ${
+                              pattern.is_active
+                                ? "hover:bg-yellow-500/10 hover:text-yellow-600 text-green-600"
+                                : "hover:bg-green-500/10 hover:text-green-600 text-muted-foreground"
+                            }`}
+                            title={pattern.is_active ? "Deactivate pattern" : "Activate pattern"}
+                          >
+                            <Power className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeletePattern(pattern.id)}
+                            className="p-2 hover:bg-destructive/10 hover:text-destructive rounded-lg transition"
+                            title="Delete pattern"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
-          {/* Published Patterns Section */}
-          <div>
-            <h2 className="text-xl font-semibold mb-4">Published Patterns</h2>
-            {isLoadingPatterns ? (
-              <div className="border border-border rounded-lg p-6">
-                <div className="text-center py-12">
-                  <p className="text-muted-foreground">Loading patterns...</p>
+          {/* Draft Patterns Tab Content */}
+          {activeTab === "drafts" && (
+            <div>
+              {isLoadingDrafts ? (
+                <div className="border border-border rounded-lg p-6">
+                  <div className="text-center py-12">
+                    <p className="text-muted-foreground">Loading drafts...</p>
+                  </div>
                 </div>
-              </div>
-            ) : patterns.length === 0 ? (
-              <div className="border border-border rounded-lg p-6">
-                <div className="text-center py-12">
-                  <p className="text-muted-foreground mb-4">
-                    No patterns published yet
-                  </p>
-                  <Link
-                    href="/patterns/new"
-                    className="text-primary hover:underline"
-                  >
-                    Create your first pattern →
-                  </Link>
+              ) : drafts.length === 0 ? (
+                <div className="border border-border rounded-lg p-6">
+                  <div className="text-center py-12">
+                    <p className="text-muted-foreground">
+                      No draft patterns
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="grid gap-4">
-                {patterns.map((pattern) => (
-                  <div
-                    key={pattern.id}
-                    className="border border-border rounded-lg p-4 hover:bg-accent/50 transition"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <FileText className="w-4 h-4 text-muted-foreground" />
-                          <h3 className="font-medium">{pattern.name}</h3>
-                          <span className="text-xs px-2 py-0.5 bg-muted rounded uppercase">
-                            {pattern.format}
-                          </span>
-                          <span className="text-xs px-2 py-0.5 bg-muted/50 rounded text-muted-foreground">
-                            v{pattern.version}
-                          </span>
-                          {pattern.is_active && (
-                            <span className="text-xs px-2 py-0.5 bg-green-500/10 text-green-600 rounded flex items-center gap-1">
-                              <CheckCircle className="w-3 h-3" />
-                              Active
+              ) : (
+                <div className="grid gap-4">
+                  {drafts.map((draft) => (
+                    <div
+                      key={draft.id}
+                      className="border border-border rounded-lg p-4 hover:bg-accent/50 transition"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <FileText className="w-4 h-4 text-muted-foreground" />
+                            <h3 className="font-medium">{draft.name}</h3>
+                            <span className="text-xs px-2 py-0.5 bg-muted rounded uppercase">
+                              {draft.format}
                             </span>
-                          )}
+                            <span className="text-xs px-2 py-0.5 bg-yellow-500/10 text-yellow-600 rounded">
+                              Draft
+                            </span>
+                          </div>
+                          <p className="text-sm text-muted-foreground line-clamp-2">
+                            {draft.instructions}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-2">
+                            Saved {new Date(draft.created_at).toLocaleDateString()}
+                          </p>
                         </div>
-                        <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
-                          {pattern.instructions}
-                        </p>
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-xs text-muted-foreground">
-                            Endpoint:
-                          </span>
-                          <code className="text-xs bg-muted px-2 py-1 rounded font-mono flex-1 truncate">
-                            {pattern.endpoint_url}
-                          </code>
+                        <div className="flex items-center gap-2">
                           <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(pattern.endpoint_url);
-                              setCopiedUrl(pattern.id);
-                              setTimeout(() => setCopiedUrl(null), 2000);
-                            }}
-                            className="p-1.5 hover:bg-accent rounded transition"
-                            title="Copy endpoint URL"
+                            onClick={() => handleLoadDraft(draft.id)}
+                            className="p-2 hover:bg-accent rounded-lg transition"
+                            title="Continue editing"
                           >
-                            {copiedUrl === pattern.id ? (
-                              <CheckCircle className="w-4 h-4 text-green-600" />
-                            ) : (
-                              <Copy className="w-4 h-4" />
-                            )}
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteDraft(draft.id)}
+                            className="p-2 hover:bg-destructive/10 hover:text-destructive rounded-lg transition"
+                            title="Delete draft"
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          Created {new Date(pattern.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Link
-                          href={`/patterns/${pattern.id}`}
-                          className="p-2 hover:bg-accent rounded-lg transition"
-                          title="View details"
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                        </Link>
-                        <button
-                          onClick={() => handleToggleActive(pattern.id, pattern.is_active)}
-                          className={`p-2 rounded-lg transition ${
-                            pattern.is_active
-                              ? "hover:bg-yellow-500/10 hover:text-yellow-600 text-green-600"
-                              : "hover:bg-green-500/10 hover:text-green-600 text-muted-foreground"
-                          }`}
-                          title={pattern.is_active ? "Deactivate pattern" : "Activate pattern"}
-                        >
-                          <Power className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeletePattern(pattern.id)}
-                          className="p-2 hover:bg-destructive/10 hover:text-destructive rounded-lg transition"
-                          title="Delete pattern"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

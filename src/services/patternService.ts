@@ -33,8 +33,8 @@ export async function createPattern(
       csv_schema: input.csv_schema || null,
       plain_text_schema: input.plain_text_schema || null,
       model_profile: input.model_profile,
-      version: 1,
-      is_active: true,
+      version: input.version ?? 1, // Use input version (0 for drafts, 1+ for published)
+      is_active: input.is_active ?? true, // Use input is_active (false for drafts, true for published)
     });
 
     if (error) {
@@ -55,22 +55,27 @@ export async function createPattern(
       throw new Error("No data returned from pattern creation");
     }
 
-    // Create initial version with ALL format-specific schemas
-    await insertRow(supabaseServer, "pattern_versions", {
-      pattern_id: data.id,
-      version: 1,
-      json_schema: (input.json_schema || null) as Database["public"]["Tables"]["pattern_versions"]["Insert"]["json_schema"],
-      yaml_schema: input.yaml_schema || null,
-      xml_schema: input.xml_schema || null,
-      csv_schema: input.csv_schema || null,
-      plain_text_schema: input.plain_text_schema || null,
-      instructions: input.instructions,
-      format: input.format,
-    });
+    // Only create version record for published patterns (version >= 1)
+    // Drafts (version = 0) don't get version records until published
+    if ((input.version ?? 1) >= 1) {
+      await insertRow(supabaseServer, "pattern_versions", {
+        pattern_id: data.id,
+        version: input.version ?? 1,
+        json_schema: (input.json_schema || null) as Database["public"]["Tables"]["pattern_versions"]["Insert"]["json_schema"],
+        yaml_schema: input.yaml_schema || null,
+        xml_schema: input.xml_schema || null,
+        csv_schema: input.csv_schema || null,
+        plain_text_schema: input.plain_text_schema || null,
+        instructions: input.instructions,
+        format: input.format,
+      });
+    }
 
     logger.info("Pattern created", {
       pattern_id: data.id,
       user_id: userId,
+      version: data.version,
+      is_draft: data.version === 0,
     });
 
     return data as Pattern;

@@ -255,6 +255,8 @@ const BaseCreatePatternSchema = z.object({
   csv_schema: CsvSchemaValidator,
   plain_text_schema: PlainTextSchemaValidator.nullable().optional(),
   model_profile: ModelProfileSchema.optional(),
+  version: z.number().int().min(0).optional(), // 0 = draft, 1+ = published
+  is_active: z.boolean().optional(), // false = draft, true = published
 });
 
 export const CreatePatternSchema = BaseCreatePatternSchema.transform((data) => ({
@@ -267,6 +269,8 @@ export const CreatePatternSchema = BaseCreatePatternSchema.transform((data) => (
   csv_schema: data.csv_schema,
   plain_text_schema: data.plain_text_schema,
   model_profile: data.model_profile ?? "managed-default",
+  version: data.version, // Pass through version (0 for drafts)
+  is_active: data.is_active, // Pass through is_active (false for drafts)
 }));
 
 export type CreatePatternInput = {
@@ -279,6 +283,8 @@ export type CreatePatternInput = {
   csv_schema?: string | null;
   plain_text_schema?: string | null;
   model_profile: string;
+  version?: number; // 0 = draft, 1+ = published versions
+  is_active?: boolean; // false = draft, true = published
 };
 
 /**
