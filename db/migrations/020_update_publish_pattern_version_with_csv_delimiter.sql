@@ -1,5 +1,9 @@
 -- Update publish_pattern_version function to include csv_delimiter
 
+-- Drop all existing versions of the function with different signatures
+DROP FUNCTION IF EXISTS public.publish_pattern_version(uuid, jsonb, text);
+DROP FUNCTION IF EXISTS public.publish_pattern_version(uuid, jsonb, text, manifest_format);
+DROP FUNCTION IF EXISTS public.publish_pattern_version(uuid, jsonb, text, manifest_format, text);
 DROP FUNCTION IF EXISTS public.publish_pattern_version(uuid, text, manifest_format, jsonb, text, text, text, text, text);
 
 CREATE OR REPLACE FUNCTION public.publish_pattern_version(
