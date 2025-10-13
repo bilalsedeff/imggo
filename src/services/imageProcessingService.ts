@@ -53,10 +53,10 @@ export async function processImage(
       user_id: userId,
     });
 
-    // Get pattern
+    // Get pattern with CSV schema
     const { data: pattern, error: patternError } = await supabaseServer
       .from("patterns")
-      .select("id, user_id, format, json_schema, instructions")
+      .select("id, user_id, format, json_schema, csv_schema, csv_delimiter, yaml_schema, xml_schema, plain_text_schema, instructions, model_profile")
       .eq("id", patternId)
       .single();
 
@@ -64,12 +64,19 @@ export async function processImage(
       throw new Error(`Pattern not found: ${patternId}`);
     }
 
-    // Infer manifest using OpenAI
-    const { manifest, latencyMs } = await inferManifest(
+    // Import orchestrator for proper format handling
+    const { inferManifest: orchestratorInferManifest } = await import("@/llm/orchestrator");
+
+    // Infer manifest using orchestrator (handles all formats properly)
+    const { manifest, manifestString, latencyMs } = await orchestratorInferManifest({
       imageUrl,
-      pattern.instructions,
-      pattern.json_schema
-    );
+      instructions: pattern.instructions,
+      format: pattern.format as any,
+      jsonSchema: pattern.json_schema || undefined,
+      csvSchema: pattern.csv_schema || undefined,
+      csvDelimiter: (pattern.csv_delimiter || "comma") as "comma" | "semicolon",
+      modelProfile: (pattern.model_profile || "managed-default") as any,
+    });
 
     logger.info("Manifest inferred successfully", {
       job_id: jobId,
@@ -147,87 +154,6 @@ export async function processImage(
   }
 }
 
-/**
- * Infer manifest from image using OpenAI Vision API
- */
-async function inferManifest(
-  imageUrl: string,
-  instructions: string,
-  jsonSchema: Record<string, unknown> | null
-): Promise<{ manifest: Record<string, unknown>; latencyMs: number }> {
-  const startTime = Date.now();
-
-  const schema = jsonSchema
-    ? createStructuredOutputSchema(jsonSchema)
-    : createDefaultSchema();
-
-  const systemPrompt = `You are an expert image analysis AI that extracts structured data from images.
-Analyze the image carefully and extract information according to the user's instructions.
-
-IMPORTANT:
-- Be precise and accurate
-- If information is not visible or uncertain, use null or indicate uncertainty
-- Follow the schema structure exactly
-- Extract all requested information`;
-
-  const userPrompt = `${instructions}
-
-Analyze this image and extract the information in the exact structure specified.`;
-
-  try {
-    const response = await openai.chat.completions.create({
-      model: MODEL,
-      messages: [
-        { role: "system", content: systemPrompt },
-        {
-          role: "user",
-          content: [
-            { type: "text", text: userPrompt },
-            {
-              type: "image_url",
-              image_url: { url: imageUrl, detail: "high" },
-            },
-          ],
-        },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "image_analysis",
-          strict: true,
-          schema: schema,
-        },
-      },
-      temperature: 0.2,
-      max_tokens: 4000,
-    });
-
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error("No content in OpenAI response");
-    }
-
-    const manifest = JSON.parse(content);
-    const latencyMs = Date.now() - startTime;
-
-    logger.debug("OpenAI inference completed", {
-      latency_ms: latencyMs,
-      tokens: response.usage?.total_tokens,
-    });
-
-    return { manifest, latencyMs };
-  } catch (error) {
-    if (error instanceof OpenAI.APIError) {
-      logger.error("OpenAI API error", {
-        status: error.status,
-        code: error.code,
-        type: error.type,
-        message: error.message,
-      });
-    }
-    throw error;
-  }
-}
 
 /**
  * Delete image from storage after successful processing (Privacy & Cost)

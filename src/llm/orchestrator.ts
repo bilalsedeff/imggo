@@ -50,6 +50,8 @@ export async function inferManifest(params: {
   instructions: string;
   format: ManifestFormat;
   jsonSchema?: Record<string, unknown>;
+  csvSchema?: string;
+  csvDelimiter?: "comma" | "semicolon";
   modelProfile?: ModelProfile;
 }): Promise<{
   manifest: Record<string, unknown>;
@@ -62,11 +64,36 @@ export async function inferManifest(params: {
     instructions,
     format,
     jsonSchema,
+    csvSchema,
+    csvDelimiter,
     modelProfile = "managed-default",
   } = params;
 
   try {
-    // Always infer as JSON first (structured)
+    // For CSV format with schema, use special CSV inference path
+    if (format === "csv" && csvSchema) {
+      const result = await openai.inferManifest(
+        imageUrl,
+        instructions,
+        format,
+        jsonSchema,
+        csvSchema,
+        csvDelimiter
+      );
+
+      // Convert to CSV string with proper delimiter
+      const delimiter = csvDelimiter === "semicolon" ? ";" : ",";
+      const manifestString = convertToCSVWithSchema(result.manifest, csvSchema, delimiter);
+
+      return {
+        manifest: result.manifest,
+        manifestString,
+        latencyMs: result.latencyMs,
+        tokensUsed: result.tokensUsed,
+      };
+    }
+
+    // Default path: Always infer as JSON first (structured)
     const result =
       modelProfile === "oss-detector"
         ? await oss.inferManifestOSS(imageUrl, instructions, "json", jsonSchema)
@@ -152,25 +179,68 @@ function convertToCSV(data: Record<string, unknown>): string {
   return `${keys.join(",")}\n${values.join(",")}`;
 }
 
-function arrayToCSV(items: Record<string, unknown>[]): string {
+function arrayToCSV(items: Record<string, unknown>[], delimiter: string = ","): string {
   if (items.length === 0) return "";
 
   const keys = Object.keys(items[0] || {});
-  const header = keys.join(",");
+  const header = keys.join(delimiter);
   const rows = items.map((item) =>
-    keys.map((key) => escapeCsvValue(item[key])).join(",")
+    keys.map((key) => escapeCsvValue(item[key], delimiter)).join(delimiter)
   );
 
   return [header, ...rows].join("\n");
 }
 
-function escapeCsvValue(value: unknown): string {
+function escapeCsvValue(value: unknown, delimiter: string = ","): string {
   if (value === null || value === undefined) return "";
+
+  // Handle objects and arrays - serialize as JSON
+  if (typeof value === "object") {
+    const str = JSON.stringify(value);
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+
   const str = String(value);
-  if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+  if (str.includes(delimiter) || str.includes('"') || str.includes("\n")) {
     return `"${str.replace(/"/g, '""')}"`;
   }
   return str;
+}
+
+/**
+ * Convert manifest with CSV schema to proper CSV format
+ * Handles the rows array structure from AI and maps to original headers
+ */
+function convertToCSVWithSchema(
+  manifest: Record<string, unknown>,
+  csvSchema: string,
+  delimiter: string
+): string {
+  // Extract headers from schema
+  const headers = csvSchema.split('\n')[0].split(delimiter).map(h => h.trim());
+
+  // Get rows array from manifest
+  const rows = (manifest.rows || []) as Record<string, unknown>[];
+
+  if (rows.length === 0) {
+    // Return just headers if no data
+    return headers.join(delimiter);
+  }
+
+  // Create header row
+  const headerRow = headers.join(delimiter);
+
+  // Create data rows
+  const dataRows = rows.map(row => {
+    return headers.map(header => {
+      // Convert header to property name (same logic as in openai.ts)
+      const propName = header.toLowerCase().replace(/[^a-z0-9]/g, '_');
+      const value = row[propName];
+      return escapeCsvValue(value, delimiter);
+    }).join(delimiter);
+  });
+
+  return [headerRow, ...dataRows].join("\n");
 }
 
 /**

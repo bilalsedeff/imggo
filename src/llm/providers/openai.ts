@@ -145,7 +145,9 @@ export async function inferManifest(
   imageUrl: string,
   instructions: string,
   format: ManifestFormat,
-  jsonSchema?: Record<string, unknown>
+  jsonSchema?: Record<string, unknown>,
+  csvSchema?: string,
+  csvDelimiter?: "comma" | "semicolon"
 ): Promise<{
   manifest: Record<string, unknown>;
   latencyMs: number;
@@ -159,12 +161,75 @@ export async function inferManifest(
       format,
     });
 
-    // Create schema for structured output
-    const schema = jsonSchema
-      ? createStructuredOutputSchema(jsonSchema)
-      : createDefaultSchema();
+    // For CSV format with csv_schema, create dynamic schema from headers
+    let schema: Record<string, unknown>;
+    let systemPrompt: string;
+    let userPrompt: string;
 
-    const systemPrompt = `You are an expert image analysis AI that extracts structured data from images.
+    if (format === "csv" && csvSchema) {
+      // Parse CSV headers
+      const delimiter = csvDelimiter === "semicolon" ? ";" : ",";
+      const headers = csvSchema.split('\n')[0].split(delimiter).map(h => h.trim());
+
+      logger.info("CSV inference with schema", { headers, delimiter });
+
+      // Create schema dynamically from headers
+      const properties: Record<string, unknown> = {};
+      const required: string[] = [];
+
+      headers.forEach(header => {
+        // Convert header to valid property name (remove spaces, special chars)
+        const propName = header.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        properties[propName] = {
+          type: "string",
+          description: `Value for column: ${header}`
+        };
+        required.push(propName);
+      });
+
+      schema = {
+        type: "object",
+        properties: {
+          rows: {
+            type: "array",
+            description: "Array of data rows matching the CSV schema",
+            items: {
+              type: "object",
+              properties,
+              required,
+              additionalProperties: false
+            }
+          }
+        },
+        required: ["rows"],
+        additionalProperties: false
+      };
+
+      systemPrompt = `You are an expert image analysis AI that extracts structured data from images into CSV-compatible format.
+Analyze the image carefully and extract information according to the user's instructions.
+
+CRITICAL CSV REQUIREMENTS:
+- Extract data that matches these EXACT column headers: ${headers.join(', ')}
+- Create one object per row of data you extract
+- Each object must have properties matching the column names
+- Property names: ${headers.map(h => h.toLowerCase().replace(/[^a-z0-9]/g, '_')).join(', ')}
+- Be precise and accurate
+- If information is not visible, use empty string ""
+- Extract ALL visible data that matches the schema`;
+
+      userPrompt = `${instructions}
+
+CSV Column Headers: ${headers.join(delimiter + ' ')}
+
+Analyze this image and extract all data that matches these columns. Return an array of objects, one for each data point/event you observe.`;
+
+    } else {
+      // Default behavior for non-CSV or CSV without schema
+      schema = jsonSchema
+        ? createStructuredOutputSchema(jsonSchema)
+        : createDefaultSchema();
+
+      systemPrompt = `You are an expert image analysis AI that extracts structured data from images.
 Analyze the image carefully and extract information according to the user's instructions.
 
 IMPORTANT:
@@ -173,9 +238,10 @@ IMPORTANT:
 - Follow the schema structure exactly
 - Extract all requested information`;
 
-    const userPrompt = `${instructions}
+      userPrompt = `${instructions}
 
 Analyze this image and extract the information in the exact structure specified.`;
+    }
 
     const response = await openai.chat.completions.create({
       model: MODEL,
