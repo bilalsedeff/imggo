@@ -48,7 +48,7 @@ type JobStatus = "queued" | "running" | "succeeded" | "failed";
 interface Job {
   id: string;
   status: JobStatus;
-  manifest: Record<string, unknown> | null;
+  manifest: Record<string, unknown> | string | null;
   error: string | null;
   latency_ms: number | null;
 }
@@ -351,12 +351,27 @@ export default function PatternDetailPage() {
         throw new Error(errorData.error?.message || "Failed to enqueue job");
       }
 
-      const { data } = await ingestResponse.json();
-      const { job_id } = data;
+      // Handle different response formats based on Content-Type
+      const contentType = ingestResponse.headers.get("content-type") || "";
+      let jobId: string;
+
+      if (contentType.includes("application/json")) {
+        // JSON format - standard response
+        const { data } = await ingestResponse.json();
+        jobId = data.job_id;
+      } else {
+        // YAML/XML/CSV/TEXT format - plain text response
+        // Job ID is in header
+        jobId = ingestResponse.headers.get("X-Job-Id") || "";
+        if (!jobId) {
+          throw new Error("Job ID not found in response");
+        }
+      }
+
       setUploadProgress(100);
 
       // Start polling for job status
-      startPolling(job_id);
+      startPolling(jobId);
     } catch (err) {
       console.error("Upload error:", err);
       setUploadError(
@@ -395,7 +410,29 @@ export default function PatternDetailPage() {
         throw new Error("Failed to fetch job status");
       }
 
-      const { data: job } = await response.json();
+      // Handle different response formats based on Content-Type
+      const contentType = response.headers.get("content-type") || "";
+      let job: Job;
+
+      if (contentType.includes("application/json")) {
+        // JSON format - standard response with job object
+        const { data } = await response.json();
+        job = data;
+      } else {
+        // YAML/XML/CSV/TEXT format - plain text manifest
+        // Job details are in headers
+        const manifestText = await response.text();
+        const status = response.headers.get("X-Job-Status") as JobStatus || "succeeded";
+
+        job = {
+          id: jobId,
+          status,
+          manifest: manifestText, // Store formatted text (YAML/XML/CSV/TEXT)
+          error: null,
+          latency_ms: null,
+        };
+      }
+
       setCurrentJob(job);
 
       // Stop polling if job is complete
@@ -413,15 +450,33 @@ export default function PatternDetailPage() {
   };
 
   const downloadManifest = (): void => {
-    if (!currentJob?.manifest) return;
+    if (!currentJob?.manifest || !pattern) return;
 
-    const blob = new Blob([JSON.stringify(currentJob.manifest, null, 2)], {
-      type: "application/json",
-    });
+    // Determine content and file extension based on format
+    let content: string;
+    let extension: string;
+    let mimeType: string;
+
+    if (typeof currentJob.manifest === 'string') {
+      // Already formatted text (YAML/XML/CSV/TEXT)
+      content = currentJob.manifest;
+      extension = pattern.format;
+      mimeType = pattern.format === 'yaml' ? 'application/x-yaml'
+        : pattern.format === 'xml' ? 'application/xml'
+        : pattern.format === 'csv' ? 'text/csv'
+        : 'text/plain';
+    } else {
+      // JSON object
+      content = JSON.stringify(currentJob.manifest, null, 2);
+      extension = 'json';
+      mimeType = 'application/json';
+    }
+
+    const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `manifest-${currentJob.id}.json`;
+    a.download = `manifest-${currentJob.id}.${extension}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1052,15 +1107,17 @@ print(result)`
                   {currentJob.status === "succeeded" && currentJob.manifest && (
                     <div className="bg-muted rounded-lg p-4 mb-4">
                       <div className="flex items-center justify-between mb-2">
-                        <h3 className="font-medium text-sm">Manifest</h3>
+                        <h3 className="font-medium text-sm">
+                          Manifest {pattern && `(${pattern.format.toUpperCase()})`}
+                        </h3>
                         <div className="flex gap-2">
                           <button
-                            onClick={() =>
-                              copyToClipboard(
-                                JSON.stringify(currentJob.manifest, null, 2),
-                                "manifest"
-                              )
-                            }
+                            onClick={() => {
+                              const text = typeof currentJob.manifest === 'string'
+                                ? currentJob.manifest
+                                : JSON.stringify(currentJob.manifest, null, 2);
+                              copyToClipboard(text, "manifest");
+                            }}
                             className="text-xs text-primary hover:underline flex items-center gap-1"
                           >
                             {copiedItem === "manifest" ? (
@@ -1085,7 +1142,9 @@ print(result)`
                         </div>
                       </div>
                       <pre className="bg-background p-3 rounded text-xs overflow-x-auto max-h-96">
-                        {JSON.stringify(currentJob.manifest, null, 2)}
+                        {typeof currentJob.manifest === 'string'
+                          ? currentJob.manifest
+                          : JSON.stringify(currentJob.manifest, null, 2)}
                       </pre>
                     </div>
                   )}
