@@ -53,6 +53,10 @@ export type CreatePatternInput = {
   format: ManifestFormat;
   instructions: string;
   json_schema?: Record<string, unknown> | null;
+  yaml_schema?: string | null;
+  xml_schema?: string | null;
+  csv_schema?: string | null;
+  plain_text_schema?: string | null;
   model_profile: string;
 };
 

@@ -752,43 +752,58 @@ print(result)`
           </div>
 
           {/* Pattern Schema Preview */}
-          {pattern.json_schema && (
-            <div className="border border-border rounded-lg p-6 mb-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold flex items-center gap-2">
-                  <Eye className="w-5 h-5" />
-                  Pattern Example (JSON Schema)
-                </h2>
-                <button
-                  onClick={() => copyToClipboard(JSON.stringify(pattern.json_schema, null, 2), "schema")}
-                  className="text-sm text-primary hover:underline flex items-center gap-1"
-                >
-                  {copiedItem === "schema" ? (
-                    <>
-                      <CheckCircle className="w-4 h-4" />
-                      Copied
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-4 h-4" />
-                      Copy
-                    </>
-                  )}
-                </button>
-              </div>
-              <pre className="bg-muted p-4 rounded-lg text-xs overflow-x-auto whitespace-pre-wrap">
-                {JSON.stringify(pattern.json_schema, null, 2)}
-              </pre>
-              {pattern.format !== "json" && (
-                <div className="mt-4 text-xs text-muted-foreground">
-                  <p>
-                    Note: This pattern returns data in <span className="font-medium uppercase">{pattern.format}</span> format.
-                    The JSON Schema shown above defines the structure, which is then converted to {pattern.format.toUpperCase()} in the API response.
-                  </p>
+          {(() => {
+            // Determine which schema to show based on format
+            let schemaContent = "";
+            let schemaTitle = "";
+
+            if (pattern.format === "json" && pattern.json_schema) {
+              schemaContent = JSON.stringify(pattern.json_schema, null, 2);
+              schemaTitle = "Pattern Example (JSON)";
+            } else if (pattern.format === "yaml" && pattern.yaml_schema) {
+              schemaContent = pattern.yaml_schema;
+              schemaTitle = "Pattern Example (YAML)";
+            } else if (pattern.format === "xml" && pattern.xml_schema) {
+              schemaContent = pattern.xml_schema;
+              schemaTitle = "Pattern Example (XML)";
+            } else if (pattern.format === "csv" && pattern.csv_schema) {
+              schemaContent = pattern.csv_schema;
+              schemaTitle = "Pattern Example (CSV)";
+            } else if (pattern.format === "text" && pattern.plain_text_schema) {
+              schemaContent = pattern.plain_text_schema;
+              schemaTitle = "Pattern Example (Text)";
+            }
+
+            return schemaContent ? (
+              <div className="border border-border rounded-lg p-6 mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-semibold flex items-center gap-2">
+                    <Eye className="w-5 h-5" />
+                    {schemaTitle}
+                  </h2>
+                  <button
+                    onClick={() => copyToClipboard(schemaContent, "schema")}
+                    className="text-sm text-primary hover:underline flex items-center gap-1"
+                  >
+                    {copiedItem === "schema" ? (
+                      <>
+                        <CheckCircle className="w-4 h-4" />
+                        Copied
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-4 h-4" />
+                        Copy
+                      </>
+                    )}
+                  </button>
                 </div>
-              )}
-            </div>
-          )}
+                <pre className="bg-muted p-4 rounded-lg text-xs overflow-x-auto whitespace-pre-wrap">
+                  {schemaContent}
+                </pre>
+              </div>
+            ) : null;
+          })()}
 
           {/* Code Examples */}
           <div className="border border-border rounded-lg p-6 mb-6">
