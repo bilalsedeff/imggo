@@ -781,8 +781,8 @@ print(result)`
                         {versions.map((v) => (
                           <button
                             key={v.version}
-                            onClick={() => handleSwitchVersion(v.version)}
-                            disabled={v.version === pattern.version || isSwitchingVersion}
+                            onClick={() => handlePreviewVersion(v.version)}
+                            disabled={isSwitchingVersion}
                             className={`w-full text-left px-3 py-2 text-sm rounded hover:bg-accent transition flex items-center justify-between ${
                               v.version === pattern.version
                                 ? "bg-accent font-medium"
@@ -816,6 +816,100 @@ print(result)`
             </div>
           </div>
 
+          {/* Preview Mode Banner */}
+          {previewVersion && (
+            <div className="bg-blue-50 dark:bg-blue-950/20 border-2 border-blue-500 rounded-lg p-4 mb-6">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Eye className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                    <h3 className="font-semibold text-blue-900 dark:text-blue-100">
+                      Previewing Version {previewVersion.version}
+                    </h3>
+                  </div>
+                  <p className="text-sm text-blue-800 dark:text-blue-200 mb-3">
+                    You're viewing an older version. The content below shows Version {previewVersion.version} created on{" "}
+                    {new Date(previewVersion.created_at).toLocaleDateString()}.
+                    This is read-only mode.
+                  </p>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setShowRestoreConfirm(true)}
+                      disabled={isSwitchingVersion}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {isSwitchingVersion ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Switching...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="w-4 h-4" />
+                          Use This Version
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={handleExitPreview}
+                      disabled={isSwitchingVersion}
+                      className="px-4 py-2 bg-white dark:bg-gray-800 border border-blue-300 dark:border-blue-700 text-blue-900 dark:text-blue-100 rounded-lg text-sm font-medium hover:bg-blue-50 dark:hover:bg-blue-900/20 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Exit Preview
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Restore Version Confirmation Modal */}
+          {showRestoreConfirm && previewVersion && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+              <div className="bg-background border border-border rounded-lg p-6 max-w-md w-full mx-4">
+                <div className="flex items-start gap-3 mb-4">
+                  <div className="p-2 bg-blue-500/10 rounded-full">
+                    <History className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-lg mb-1">Use This Version?</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Are you sure you want to make Version {previewVersion.version} the active version?
+                      This will switch your pattern to use this version's schema and instructions.
+                      The current active version (Version {pattern.version}) will remain in history.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-3 justify-end">
+                  <button
+                    onClick={() => setShowRestoreConfirm(false)}
+                    disabled={isSwitchingVersion}
+                    className="px-4 py-2 border border-border rounded-lg text-sm hover:bg-accent transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleUseVersion}
+                    disabled={isSwitchingVersion}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isSwitchingVersion ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Switching...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="w-4 h-4" />
+                        Yes, Use Version {previewVersion.version}
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Endpoint Section */}
           <div className="border border-border rounded-lg p-6 mb-6">
             <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
@@ -847,29 +941,35 @@ print(result)`
               <FileText className="w-5 h-5" />
               Instructions
             </h2>
-            <p className="text-sm whitespace-pre-wrap">{pattern.instructions}</p>
+            <p className="text-sm whitespace-pre-wrap">
+              {previewVersion ? previewVersion.instructions : pattern.instructions}
+            </p>
           </div>
 
           {/* Pattern Schema Preview */}
           {(() => {
             // Determine which schema to show based on format
+            // Use preview version if available, otherwise use active pattern
+            const displayData = previewVersion || pattern;
+            const displayFormat = previewVersion ? previewVersion.format : pattern.format;
+
             let schemaContent = "";
             let schemaTitle = "";
 
-            if (pattern.format === "json" && pattern.json_schema) {
-              schemaContent = JSON.stringify(pattern.json_schema, null, 2);
+            if (displayFormat === "json" && displayData.json_schema) {
+              schemaContent = JSON.stringify(displayData.json_schema, null, 2);
               schemaTitle = "Pattern Example (JSON)";
-            } else if (pattern.format === "yaml" && pattern.yaml_schema) {
-              schemaContent = pattern.yaml_schema;
+            } else if (displayFormat === "yaml" && displayData.yaml_schema) {
+              schemaContent = displayData.yaml_schema;
               schemaTitle = "Pattern Example (YAML)";
-            } else if (pattern.format === "xml" && pattern.xml_schema) {
-              schemaContent = pattern.xml_schema;
+            } else if (displayFormat === "xml" && displayData.xml_schema) {
+              schemaContent = displayData.xml_schema;
               schemaTitle = "Pattern Example (XML)";
-            } else if (pattern.format === "csv" && pattern.csv_schema) {
-              schemaContent = pattern.csv_schema;
+            } else if (displayFormat === "csv" && displayData.csv_schema) {
+              schemaContent = displayData.csv_schema;
               schemaTitle = "Pattern Example (CSV)";
-            } else if (pattern.format === "text" && pattern.plain_text_schema) {
-              schemaContent = pattern.plain_text_schema;
+            } else if (displayFormat === "text" && displayData.plain_text_schema) {
+              schemaContent = displayData.plain_text_schema;
               schemaTitle = "Pattern Example (Text)";
             }
 
