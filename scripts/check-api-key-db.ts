@@ -22,12 +22,22 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
 });
 
 async function checkApiKey() {
-  const apiKey = "imggo_test_wXanBwVxlqtgOCzMQ0VCvYcrmU9qwNIR-rn5D0kZ";
+  // Get API key from command line argument or environment variable
+  const apiKey = process.argv[2] || process.env.TEST_API_KEY;
+
+  if (!apiKey) {
+    console.error("❌ Please provide an API key:");
+    console.log("\nUsage:");
+    console.log("  npx tsx scripts/check-api-key-db.ts YOUR_API_KEY");
+    console.log("  OR");
+    console.log("  TEST_API_KEY=your_key npx tsx scripts/check-api-key-db.ts");
+    process.exit(1);
+  }
+
   const hash = createHash("sha256").update(apiKey).digest("hex");
 
   console.log("🔍 Checking API key in database...\n");
-  console.log("API Key:", apiKey);
-  console.log("Key Prefix:", apiKey.substring(0, 12));
+  console.log("Key Prefix:", apiKey.substring(0, 12) + "...");
   console.log("SHA-256 Hash:", hash);
   console.log("");
 
