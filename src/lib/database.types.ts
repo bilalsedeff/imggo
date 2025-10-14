@@ -140,6 +140,7 @@ export type Database = {
       pattern_versions: {
         Row: {
           created_at: string
+          csv_delimiter: string | null
           csv_schema: string | null
           format: Database["public"]["Enums"]["manifest_format"] | null
           id: string
@@ -153,6 +154,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          csv_delimiter?: string | null
           csv_schema?: string | null
           format?: Database["public"]["Enums"]["manifest_format"] | null
           id?: string
@@ -166,6 +168,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          csv_delimiter?: string | null
           csv_schema?: string | null
           format?: Database["public"]["Enums"]["manifest_format"] | null
           id?: string
@@ -190,6 +193,7 @@ export type Database = {
       patterns: {
         Row: {
           created_at: string
+          csv_delimiter: string | null
           csv_schema: string | null
           format: Database["public"]["Enums"]["manifest_format"]
           id: string
@@ -198,6 +202,7 @@ export type Database = {
           json_schema: Json | null
           model_profile: string
           name: string
+          parent_pattern_id: string | null
           plain_text_schema: string | null
           updated_at: string
           user_id: string
@@ -207,6 +212,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          csv_delimiter?: string | null
           csv_schema?: string | null
           format?: Database["public"]["Enums"]["manifest_format"]
           id?: string
@@ -215,6 +221,7 @@ export type Database = {
           json_schema?: Json | null
           model_profile?: string
           name: string
+          parent_pattern_id?: string | null
           plain_text_schema?: string | null
           updated_at?: string
           user_id: string
@@ -224,6 +231,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          csv_delimiter?: string | null
           csv_schema?: string | null
           format?: Database["public"]["Enums"]["manifest_format"]
           id?: string
@@ -232,6 +240,7 @@ export type Database = {
           json_schema?: Json | null
           model_profile?: string
           name?: string
+          parent_pattern_id?: string | null
           plain_text_schema?: string | null
           updated_at?: string
           user_id?: string
@@ -240,6 +249,13 @@ export type Database = {
           yaml_schema?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "patterns_parent_pattern_id_fkey"
+            columns: ["parent_pattern_id"]
+            isOneToOne: false
+            referencedRelation: "patterns"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "patterns_user_id_fkey"
             columns: ["user_id"]
@@ -504,13 +520,13 @@ export type Database = {
       }
       publish_pattern_version: {
         Args: {
+          p_csv_delimiter?: string
           p_csv_schema?: string
           p_format: Database["public"]["Enums"]["manifest_format"]
           p_instructions: string
           p_json_schema?: Json
           p_pattern_id: string
           p_plain_text_schema?: string
-          p_user_id: string
           p_xml_schema?: string
           p_yaml_schema?: string
         }
@@ -660,3 +676,5 @@ export const Constants = {
     },
   },
 } as const
+A new version of Supabase CLI is available: v2.51.0 (currently installed v2.48.3)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli
