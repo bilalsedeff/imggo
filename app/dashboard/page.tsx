@@ -23,6 +23,9 @@ interface Metrics {
   jobs_today: number;
   success_rate: number;
   total_jobs: number;
+  success_rate_24h: number;
+  total_jobs_24h: number;
+  successful_jobs_24h: number;
 }
 
 interface Pattern {
@@ -50,6 +53,7 @@ export default function DashboardPage() {
   const [isLoadingMetrics, setIsLoadingMetrics] = useState(false);
   const [isLoadingStats, setIsLoadingStats] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [successRateTimeRange, setSuccessRateTimeRange] = useState<"24h" | "all">("all");
 
   useEffect(() => {
     if (!session?.access_token) return;
@@ -197,18 +201,49 @@ export default function DashboardPage() {
             </div>
 
             <div className="p-6 border border-border rounded-lg">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingUp className="w-4 h-4 text-muted-foreground" />
-                <h3 className="text-sm font-medium text-muted-foreground">
-                  Success Rate (All Time)
-                </h3>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-muted-foreground" />
+                  <h3 className="text-sm font-medium text-muted-foreground">
+                    Success Rate ({successRateTimeRange === "24h" ? "Last 24h" : "All Time"})
+                  </h3>
+                </div>
+                {/* Time Range Toggle */}
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setSuccessRateTimeRange("24h")}
+                    className={`text-[10px] px-1.5 py-0.5 rounded transition ${
+                      successRateTimeRange === "24h"
+                        ? "bg-muted text-foreground font-medium"
+                        : "text-muted-foreground/40 hover:text-muted-foreground/60"
+                    }`}
+                  >
+                    24h
+                  </button>
+                  <button
+                    onClick={() => setSuccessRateTimeRange("all")}
+                    className={`text-[10px] px-1.5 py-0.5 rounded transition ${
+                      successRateTimeRange === "all"
+                        ? "bg-muted text-foreground font-medium"
+                        : "text-muted-foreground/40 hover:text-muted-foreground/60"
+                    }`}
+                  >
+                    Ever
+                  </button>
+                </div>
               </div>
               <p className="text-3xl font-bold">
-                {isLoadingMetrics ? "..." : `${metrics?.success_rate || 0}%`}
+                {isLoadingMetrics
+                  ? "..."
+                  : successRateTimeRange === "24h"
+                  ? `${metrics?.success_rate_24h || 0}%`
+                  : `${metrics?.success_rate || 0}%`}
               </p>
               {!isLoadingMetrics && metrics && (
                 <p className="text-xs text-muted-foreground/60 mt-1">
-                  {Math.round((metrics.total_jobs * metrics.success_rate) / 100)}/{metrics.total_jobs} jobs
+                  {successRateTimeRange === "24h"
+                    ? `${metrics.successful_jobs_24h}/${metrics.total_jobs_24h} jobs`
+                    : `${Math.round((metrics.total_jobs * metrics.success_rate) / 100)}/${metrics.total_jobs} jobs`}
                 </p>
               )}
             </div>

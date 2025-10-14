@@ -40,7 +40,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     .eq("requested_by", user.userId)
     .gte("created_at", todayStart.toISOString());
 
-  // Get success rate (jobs with status 'succeeded' vs total jobs)
+  // Get success rate (all time)
   const { count: totalJobs } = await supabaseServer
     .from("jobs")
     .select("id", { count: "exact", head: true })
@@ -57,11 +57,36 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       ? Math.round((successfulJobs! / totalJobs) * 100)
       : 0;
 
+  // Get success rate (last 24h)
+  const last24hStart = new Date();
+  last24hStart.setHours(last24hStart.getHours() - 24);
+
+  const { count: totalJobs24h } = await supabaseServer
+    .from("jobs")
+    .select("id", { count: "exact", head: true })
+    .eq("requested_by", user.userId)
+    .gte("created_at", last24hStart.toISOString());
+
+  const { count: successfulJobs24h } = await supabaseServer
+    .from("jobs")
+    .select("id", { count: "exact", head: true })
+    .eq("requested_by", user.userId)
+    .eq("status", "succeeded")
+    .gte("created_at", last24hStart.toISOString());
+
+  const successRate24h =
+    totalJobs24h && totalJobs24h > 0
+      ? Math.round((successfulJobs24h! / totalJobs24h) * 100)
+      : 0;
+
   return successResponse({
     total_patterns: totalPatterns || 0,
     active_patterns: activePatterns || 0,
     jobs_today: jobsToday || 0,
     success_rate: successRate,
     total_jobs: totalJobs || 0,
+    success_rate_24h: successRate24h,
+    total_jobs_24h: totalJobs24h || 0,
+    successful_jobs_24h: successfulJobs24h || 0,
   });
 });
