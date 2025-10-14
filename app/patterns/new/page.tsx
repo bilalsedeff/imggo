@@ -50,6 +50,7 @@ export default function NewPatternPage() {
   // Pattern selection
   const [selectedPatternId, setSelectedPatternId] = useState<string | null>(null);
   const [parentPatternId, setParentPatternId] = useState<string | null>(null); // Track parent for draft versioning
+  const [isDraftMode, setIsDraftMode] = useState(false); // Track if editing a draft
   const [activePatterns, setActivePatterns] = useState<Pattern[]>([]);
   const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
 
@@ -299,6 +300,7 @@ export default function NewPatternPage() {
 
           // CRITICAL: Check if this is a draft (version=0) or published pattern (version>=1)
           const isDraft = patternData.version === 0;
+          setIsDraftMode(isDraft); // Track draft mode for UI display
 
           if (isDraft) {
             // Draft mode: Load as-is, not follow-up mode
@@ -389,6 +391,8 @@ export default function NewPatternPage() {
     if (patternId === "new") {
       // Reset form for new pattern
       setSelectedPatternId(null);
+      setParentPatternId(null);
+      setIsDraftMode(false); // Not in draft mode
       setName("");
       setFormat("json");
       setInstructions("");
@@ -423,6 +427,8 @@ export default function NewPatternPage() {
 
       // Fill form with pattern data (follow-up mode for instructions)
       setSelectedPatternId(patternData.id);
+      setParentPatternId(null); // Published pattern has no parent
+      setIsDraftMode(false); // Not a draft (published pattern with version >= 1)
       setName(patternData.name);
       setFormat(patternData.format);
       setOriginalInstructions(patternData.instructions); // Store original
@@ -1315,7 +1321,12 @@ export default function NewPatternPage() {
             {/* Pattern Selection */}
             <div>
               <label className="text-sm font-medium mb-2 flex items-center gap-2">
-                {selectedPatternId ? (
+                {isDraftMode ? (
+                  <>
+                    <Edit3 className="w-4 h-4" />
+                    Editing Draft
+                  </>
+                ) : selectedPatternId ? (
                   <>
                     <RefreshCw className="w-4 h-4" />
                     Update Pattern
@@ -1323,7 +1334,7 @@ export default function NewPatternPage() {
                 ) : (
                   <>
                     <PlusCircle className="w-4 h-4" />
-                    Pattern Mode
+                    Create New Pattern
                   </>
                 )}
               </label>
