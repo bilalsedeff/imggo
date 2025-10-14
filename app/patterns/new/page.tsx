@@ -50,6 +50,7 @@ export default function NewPatternPage() {
   // Pattern selection
   const [selectedPatternId, setSelectedPatternId] = useState<string | null>(null);
   const [parentPatternId, setParentPatternId] = useState<string | null>(null); // Track parent for draft versioning
+  const [draftId, setDraftId] = useState<string | null>(null); // Track draft ID for deletion after publish
   const [isDraftMode, setIsDraftMode] = useState(false); // Track if editing a draft
   const [activePatterns, setActivePatterns] = useState<Pattern[]>([]);
   const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
@@ -292,22 +293,36 @@ export default function NewPatternPage() {
           const patternData = result.data;
           console.log("[Pattern Studio] Pattern loaded:", patternData.name, patternData.format);
 
-          // Fill form with pattern data
-          setSelectedPatternId(patternData.id);
-          setParentPatternId(patternData.parent_pattern_id || null); // Track parent for draft versioning
-          setName(patternData.name);
-          setFormat(patternData.format);
-
           // CRITICAL: Check if this is a draft (version=0) or published pattern (version>=1)
           const isDraft = patternData.version === 0;
-          setIsDraftMode(isDraft); // Track draft mode for UI display
+          const hasParent = patternData.parent_pattern_id;
 
-          if (isDraft) {
-            // Draft mode: Load as-is, not follow-up mode
-            setInstructions(patternData.instructions); // Show draft's instructions for editing
-            setOriginalInstructions(""); // No original (draft is the working copy)
+          setIsDraftMode(isDraft); // Track draft mode for UI display
+          setParentPatternId(hasParent || null); // Track parent for draft versioning
+
+          // CRITICAL: For drafts with parent, show parent in dropdown (not draft itself)
+          if (isDraft && hasParent) {
+            // Draft from versioning: Show PARENT pattern in dropdown
+            setDraftId(patternData.id); // CRITICAL: Store draft ID for deletion after publish
+            setSelectedPatternId(hasParent); // Show parent in dropdown
+            setName(patternData.name);
+            setFormat(patternData.format);
+            setInstructions(patternData.instructions); // Draft's work-in-progress
+            setOriginalInstructions(""); // No original needed - draft has the full state
+          } else if (isDraft) {
+            // Draft from scratch: No parent, show "Create New Pattern"
+            setDraftId(patternData.id); // Store draft ID
+            setSelectedPatternId(null);
+            setName(patternData.name);
+            setFormat(patternData.format);
+            setInstructions(patternData.instructions);
+            setOriginalInstructions("");
           } else {
-            // Published pattern mode: Follow-up mode for versioning
+            // Published pattern: Follow-up mode for versioning
+            setDraftId(null); // Not a draft
+            setSelectedPatternId(patternData.id);
+            setName(patternData.name);
+            setFormat(patternData.format);
             setOriginalInstructions(patternData.instructions); // Store original
             setInstructions(""); // Empty for follow-up request
           }
@@ -392,6 +407,7 @@ export default function NewPatternPage() {
       // Reset form for new pattern
       setSelectedPatternId(null);
       setParentPatternId(null);
+      setDraftId(null); // Reset draft ID
       setIsDraftMode(false); // Not in draft mode
       setName("");
       setFormat("json");
@@ -428,6 +444,7 @@ export default function NewPatternPage() {
       // Fill form with pattern data (follow-up mode for instructions)
       setSelectedPatternId(patternData.id);
       setParentPatternId(null); // Published pattern has no parent
+      setDraftId(null); // Not a draft
       setIsDraftMode(false); // Not a draft (published pattern with version >= 1)
       setName(patternData.name);
       setFormat(patternData.format);
@@ -926,9 +943,10 @@ export default function NewPatternPage() {
         }
 
         // Successfully published draft to parent - now delete the draft pattern
-        if (selectedPatternId) {
+        // CRITICAL: Use draftId (not selectedPatternId which points to parent)
+        if (draftId) {
           try {
-            await fetch(`/api/patterns/${selectedPatternId}`, {
+            await fetch(`/api/patterns/${draftId}`, {
               method: "DELETE",
               headers: {
                 "Authorization": `Bearer ${session.access_token}`,
@@ -1014,6 +1032,23 @@ export default function NewPatternPage() {
         if (!response.ok) {
           const data = await response.json();
           throw new Error(data.error?.message || "Failed to publish pattern");
+        }
+
+        // Successfully created new pattern - if this was from a draft, delete the draft
+        // CRITICAL: Delete draft only if it was a draft from scratch (no parent)
+        if (isDraftMode && draftId && !parentPatternId) {
+          try {
+            await fetch(`/api/patterns/${draftId}`, {
+              method: "DELETE",
+              headers: {
+                "Authorization": `Bearer ${session.access_token}`,
+              },
+            });
+            console.log("Draft pattern deleted after successful publish (scratch draft)");
+          } catch (deleteErr) {
+            console.warn("Failed to delete scratch draft after publish:", deleteErr);
+            // Continue anyway - new pattern was created successfully
+          }
         }
 
         setSuccess(`Pattern "${name}" published successfully!`);
