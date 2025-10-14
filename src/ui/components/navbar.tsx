@@ -36,7 +36,7 @@ export function Navbar() {
 
   return (
     <header className="border-b border-border bg-background">
-      <div className="container flex h-16 items-center justify-between px-8">
+      <div className="max-w-7xl mx-auto flex h-16 items-center justify-between px-8">
         <Link href="/dashboard" className="text-2xl font-bold hover:opacity-80 transition">
           ImgGo
         </Link>

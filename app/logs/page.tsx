@@ -14,7 +14,17 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
+  Copy,
+  Check,
+  ExternalLink,
 } from "lucide-react";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/ui/components/sheet";
 
 interface Job {
   id: string;
@@ -27,6 +37,9 @@ interface Job {
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
+  idempotency_key: string | null;
+  extras: Record<string, unknown> | null;
+  requested_by: string | null;
   patterns: {
     id: string;
     name: string;
@@ -56,6 +69,12 @@ export default function LogsPage() {
     searchParams?.get("pattern_id") || ""
   );
   const [selectedStatus, setSelectedStatus] = useState<string>("");
+
+  // Job Detail Drawer
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [isLoadingJobDetail, setIsLoadingJobDetail] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   useEffect(() => {
     if (!session?.access_token) return;
@@ -116,6 +135,40 @@ export default function LogsPage() {
   useEffect(() => {
     fetchJobs();
   }, [session, timeRange, selectedPatternId, selectedStatus, page]);
+
+  // Fetch job detail when selectedJobId changes
+  useEffect(() => {
+    if (!selectedJobId || !session?.access_token) return;
+
+    const fetchJobDetail = async () => {
+      setIsLoadingJobDetail(true);
+      try {
+        // Force JSON response regardless of pattern format by adding ?format=json
+        const response = await fetch(`/api/jobs/${selectedJobId}?format=json`, {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          setSelectedJob(result.data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch job detail:", err);
+      } finally {
+        setIsLoadingJobDetail(false);
+      }
+    };
+
+    fetchJobDetail();
+  }, [selectedJobId, session]);
+
+  const handleCopyToClipboard = (text: string, fieldName: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(fieldName);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
 
   const getStatusColor = (status: Job["status"]) => {
     switch (status) {
@@ -281,7 +334,8 @@ export default function LogsPage() {
                     {jobs.map((job) => (
                       <tr
                         key={job.id}
-                        className="hover:bg-accent/50 transition"
+                        onClick={() => setSelectedJobId(job.id)}
+                        className="hover:bg-accent/50 transition cursor-pointer"
                       >
                         <td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
                           {new Date(job.created_at).toLocaleString()}
@@ -352,6 +406,295 @@ export default function LogsPage() {
             </div>
           )}
         </div>
+
+        {/* Job Detail Drawer */}
+        <Sheet open={!!selectedJobId} onOpenChange={(open) => !open && setSelectedJobId(null)}>
+          <SheetContent side="right" className="overflow-y-auto">
+            <SheetHeader>
+              <SheetTitle>
+                {isLoadingJobDetail ? "Loading..." : "Job Details"}
+              </SheetTitle>
+              <SheetDescription>
+                {isLoadingJobDetail
+                  ? "Fetching job information..."
+                  : "Complete information about this job execution"}
+              </SheetDescription>
+            </SheetHeader>
+
+            {isLoadingJobDetail ? (
+              <div className="flex items-center justify-center h-full">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              </div>
+            ) : selectedJob ? (
+              <>
+
+
+                <div className="mt-6 space-y-6">
+                  {/* Overview Section */}
+                  <div className="border border-border rounded-lg p-4">
+                    <h3 className="font-semibold mb-3 flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4" />
+                      Overview
+                    </h3>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Job ID</span>
+                        <div className="flex items-center gap-2">
+                          <code className="text-xs bg-muted px-2 py-1 rounded">{selectedJob.id}</code>
+                          <button
+                            onClick={() => handleCopyToClipboard(selectedJob.id, "job_id")}
+                            className="p-1 hover:bg-accent rounded transition"
+                          >
+                            {copiedField === "job_id" ? (
+                              <Check className="w-3 h-3 text-green-600" />
+                            ) : (
+                              <Copy className="w-3 h-3" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Status</span>
+                        <span
+                          className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${getStatusColor(
+                            selectedJob.status
+                          )}`}
+                        >
+                          {getStatusIcon(selectedJob.status)}
+                          {selectedJob.status}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Pattern</span>
+                        <div className="flex items-center gap-2">
+                          <div className="text-right">
+                            <p className="text-xs font-medium">{selectedJob.patterns.name}</p>
+                            <p className="text-xs text-muted-foreground uppercase">
+                              {selectedJob.patterns.format}
+                            </p>
+                          </div>
+                          <a
+                            href={`/patterns/${selectedJob.pattern_id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1 hover:bg-accent rounded transition"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </div>
+                      </div>
+
+                      {selectedJob.latency_ms && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Latency</span>
+                          <span className="text-sm font-mono">{selectedJob.latency_ms}ms</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Request Details Section */}
+                  <div className="border border-border rounded-lg p-4">
+                    <h3 className="font-semibold mb-3">Request Details</h3>
+                    <div className="space-y-3">
+                      {/* Image URL */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-medium text-muted-foreground">Image URL</span>
+                          <button
+                            onClick={() => handleCopyToClipboard(selectedJob.image_url, "image_url")}
+                            className="p-1 hover:bg-accent rounded transition"
+                          >
+                            {copiedField === "image_url" ? (
+                              <Check className="w-3 h-3 text-green-600" />
+                            ) : (
+                              <Copy className="w-3 h-3" />
+                            )}
+                          </button>
+                        </div>
+                        <code className="text-xs bg-muted px-2 py-1 rounded block break-all">
+                          {selectedJob.image_url}
+                        </code>
+                      </div>
+
+                      {/* Idempotency Key */}
+                      {selectedJob.idempotency_key && (
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-sm font-medium text-muted-foreground">
+                              Idempotency Key
+                            </span>
+                            <button
+                              onClick={() =>
+                                handleCopyToClipboard(selectedJob.idempotency_key!, "idempotency_key")
+                              }
+                              className="p-1 hover:bg-accent rounded transition"
+                            >
+                              {copiedField === "idempotency_key" ? (
+                                <Check className="w-3 h-3 text-green-600" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                            </button>
+                          </div>
+                          <code className="text-xs bg-muted px-2 py-1 rounded block break-all">
+                            {selectedJob.idempotency_key}
+                          </code>
+                        </div>
+                      )}
+
+                      {/* Extras */}
+                      {selectedJob.extras && Object.keys(selectedJob.extras).length > 0 && (
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-sm font-medium text-muted-foreground">
+                              Request Extras
+                            </span>
+                            <button
+                              onClick={() =>
+                                handleCopyToClipboard(
+                                  JSON.stringify(selectedJob.extras, null, 2),
+                                  "extras"
+                                )
+                              }
+                              className="p-1 hover:bg-accent rounded transition"
+                            >
+                              {copiedField === "extras" ? (
+                                <Check className="w-3 h-3 text-green-600" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                            </button>
+                          </div>
+                          <pre className="text-xs bg-muted px-2 py-2 rounded overflow-x-auto">
+                            {JSON.stringify(selectedJob.extras, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Response Section */}
+                  <div className="border border-border rounded-lg p-4">
+                    <h3 className="font-semibold mb-3">Response</h3>
+                    {selectedJob.status === "succeeded" && selectedJob.manifest ? (
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-medium text-muted-foreground">Manifest</span>
+                          <button
+                            onClick={() =>
+                              handleCopyToClipboard(
+                                selectedJob.patterns.format === "text" &&
+                                typeof selectedJob.manifest === "object" &&
+                                selectedJob.manifest !== null &&
+                                "text" in selectedJob.manifest
+                                  ? (selectedJob.manifest as { text: string }).text
+                                  : JSON.stringify(selectedJob.manifest, null, 2),
+                                "manifest"
+                              )
+                            }
+                            className="p-1 hover:bg-accent rounded transition"
+                          >
+                            {copiedField === "manifest" ? (
+                              <Check className="w-3 h-3 text-green-600" />
+                            ) : (
+                              <Copy className="w-3 h-3" />
+                            )}
+                          </button>
+                        </div>
+                        <pre className="text-xs bg-muted px-2 py-2 rounded overflow-x-auto max-h-96">
+                          {selectedJob.patterns.format === "text" &&
+                          typeof selectedJob.manifest === "object" &&
+                          selectedJob.manifest !== null &&
+                          "text" in selectedJob.manifest
+                            ? (selectedJob.manifest as { text: string }).text
+                            : JSON.stringify(selectedJob.manifest, null, 2)}
+                        </pre>
+                      </div>
+                    ) : selectedJob.status === "failed" && selectedJob.error ? (
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-medium text-muted-foreground">Error</span>
+                          <button
+                            onClick={() => handleCopyToClipboard(selectedJob.error!, "error")}
+                            className="p-1 hover:bg-accent rounded transition"
+                          >
+                            {copiedField === "error" ? (
+                              <Check className="w-3 h-3 text-green-600" />
+                            ) : (
+                              <Copy className="w-3 h-3" />
+                            )}
+                          </button>
+                        </div>
+                        <div className="text-xs bg-red-500/10 border border-red-500/20 text-red-600 px-2 py-2 rounded">
+                          {selectedJob.error}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        {selectedJob.status === "running"
+                          ? "Job is still running..."
+                          : "Job is queued, waiting to be processed"}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Timing Section */}
+                  <div className="border border-border rounded-lg p-4">
+                    <h3 className="font-semibold mb-3 flex items-center gap-2">
+                      <Clock className="w-4 h-4" />
+                      Timing
+                    </h3>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Created At</span>
+                        <span className="text-xs font-mono">
+                          {new Date(selectedJob.created_at).toLocaleString()}
+                        </span>
+                      </div>
+
+                      {selectedJob.started_at && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Started At</span>
+                          <span className="text-xs font-mono">
+                            {new Date(selectedJob.started_at).toLocaleString()}
+                          </span>
+                        </div>
+                      )}
+
+                      {selectedJob.completed_at && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Completed At</span>
+                          <span className="text-xs font-mono">
+                            {new Date(selectedJob.completed_at).toLocaleString()}
+                          </span>
+                        </div>
+                      )}
+
+                      {selectedJob.latency_ms && (
+                        <div className="flex items-center justify-between pt-2 border-t border-border">
+                          <span className="text-sm font-medium text-muted-foreground">
+                            Total Duration
+                          </span>
+                          <span className="text-sm font-mono font-semibold">
+                            {selectedJob.latency_ms}ms
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center justify-center h-full text-muted-foreground">
+                No job selected
+              </div>
+            )}
+          </SheetContent>
+        </Sheet>
       </div>
     </div>
   );

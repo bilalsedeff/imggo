@@ -154,14 +154,8 @@ export default function DashboardPage() {
       <Navbar />
       <div className="p-8">
         <div className="max-w-7xl mx-auto">
-          <div className="flex justify-between items-center mb-8">
+          <div className="mb-8">
             <h1 className="text-3xl font-bold">Dashboard</h1>
-            <Link
-              href="/patterns/new"
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition"
-            >
-              Create Pattern
-            </Link>
           </div>
 
           {/* Metrics Cards */}
@@ -206,12 +200,17 @@ export default function DashboardPage() {
               <div className="flex items-center gap-2 mb-2">
                 <TrendingUp className="w-4 h-4 text-muted-foreground" />
                 <h3 className="text-sm font-medium text-muted-foreground">
-                  Success Rate
+                  Success Rate (All Time)
                 </h3>
               </div>
               <p className="text-3xl font-bold">
                 {isLoadingMetrics ? "..." : `${metrics?.success_rate || 0}%`}
               </p>
+              {!isLoadingMetrics && metrics && (
+                <p className="text-xs text-muted-foreground/60 mt-1">
+                  {Math.round((metrics.total_jobs * metrics.success_rate) / 100)}/{metrics.total_jobs} jobs
+                </p>
+              )}
             </div>
           </div>
 

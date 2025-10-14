@@ -73,3 +73,5 @@ nul
 *.md
 docs/
 check-api-key.ts
+APPLY_MIGRATION.sql
+ULTRA_THINK_ANALYSIS.md

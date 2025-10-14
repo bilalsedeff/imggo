@@ -131,31 +131,35 @@ export async function inferManifest(params: {
       }
     }
 
-    // Plain Text: Extract headings from markdown template
+    // Plain Text: Pass directly to provider for special handling
     if (format === "text" && plainTextSchema) {
-      try {
-        const headings = extractMarkdownHeadings(plainTextSchema);
-        // Create JSON schema from headings
-        const properties: Record<string, unknown> = {};
-        headings.forEach(heading => {
-          const key = heading.text.toLowerCase().replace(/[^a-z0-9]/g, '_');
-          properties[key] = {
-            type: "string",
-            description: heading.text
-          };
-        });
-        effectiveJsonSchema = {
-          type: "object",
-          properties,
-          required: Object.keys(properties),
-          additionalProperties: false
-        };
-        logger.info("Using Plain Text schema for inference", {
-          headings: headings.map(h => h.text),
-        });
-      } catch (error) {
-        logger.warn("Failed to parse Plain Text schema, falling back to json_schema", { error });
-      }
+      logger.info("Using Plain Text schema for inference (direct handling)", {
+        has_plain_text_schema: true,
+      });
+
+      // Call openai provider with plainTextSchema for special template preservation
+      result = await openai.inferManifest(
+        imageUrl,
+        instructions,
+        "text",
+        undefined,
+        undefined,
+        undefined,
+        imageFilename,
+        plainTextSchema
+      );
+
+      // Extract the text from the wrapped manifest
+      const textContent = typeof result.manifest === 'object' && 'text' in result.manifest
+        ? (result.manifest as { text: string }).text
+        : JSON.stringify(result.manifest, null, 2);
+
+      return {
+        manifest: result.manifest,
+        manifestString: textContent,
+        latencyMs: result.latencyMs,
+        tokensUsed: result.tokensUsed,
+      };
     }
 
     // Infer as JSON with effective schema

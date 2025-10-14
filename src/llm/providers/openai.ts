@@ -148,7 +148,8 @@ export async function inferManifest(
   jsonSchema?: Record<string, unknown>,
   csvSchema?: string,
   csvDelimiter?: "comma" | "semicolon",
-  imageFilename?: string
+  imageFilename?: string,
+  plainTextSchema?: string
 ): Promise<{
   manifest: Record<string, unknown>;
   latencyMs: number;
@@ -162,6 +163,76 @@ export async function inferManifest(
       format,
       has_filename: Boolean(imageFilename),
     });
+
+    // SPECIAL HANDLING FOR PLAIN TEXT: Preserve exact template structure
+    if (format === "text" && plainTextSchema) {
+      const systemPrompt = `You are an expert image analysis AI that extracts structured data from images.
+Your task is to analyze the image and fill in the provided template with the extracted information.
+
+CRITICAL REQUIREMENTS FOR PLAIN TEXT OUTPUT:
+1. PRESERVE THE EXACT TEMPLATE FORMAT - Do not change any headers, structure, or formatting
+2. MAINTAIN THE EXACT ORDER of all sections as they appear in the template
+3. KEEP ALL MARKDOWN HEADERS (# symbols) exactly as shown in the template
+4. REPLACE ONLY the placeholder values (like "[To be determined from image]") with actual extracted information
+5. If information is not visible in the image, write "Not visible" or "Unknown"
+6. Do NOT add, remove, or reorder any sections
+7. Do NOT change the capitalization or wording of headers
+8. The output must be character-for-character identical to the template structure, with only the values filled in
+
+Example:
+Template: "# Book Title\n[To be determined from image]"
+Correct output: "# Book Title\nThe Great Gatsby"
+WRONG output: "book title: The Great Gatsby" ❌
+WRONG output: "Title: The Great Gatsby" ❌`;
+
+      const userPrompt = `${instructions}
+
+TEMPLATE TO FILL (preserve this exact structure):
+${plainTextSchema}
+
+Analyze the image and fill in ONLY the placeholder values in the template above. Keep everything else exactly the same.`;
+
+      // For plain text, use regular completion (no JSON Schema enforcement)
+      const response = await openai.chat.completions.create({
+        model: MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: userPrompt },
+              {
+                type: "image_url",
+                image_url: { url: imageUrl, detail: "high" },
+              },
+            ],
+          },
+        ],
+        temperature: 0.1, // Lower temperature for more consistent output
+        max_tokens: 4000,
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error("No content in OpenAI response");
+      }
+
+      // For plain text, return as-is (wrapped in manifest object for consistency)
+      const manifest = { text: content.trim() };
+      const latencyMs = Date.now() - startTime;
+
+      logger.info("Plain text manifest inferred successfully", {
+        latency_ms: latencyMs,
+        tokens: response.usage?.total_tokens,
+        preview: content.substring(0, 200),
+      });
+
+      return {
+        manifest,
+        latencyMs,
+        tokensUsed: response.usage?.total_tokens,
+      };
+    }
 
     // For CSV format with csv_schema, create dynamic schema from headers
     let schema: Record<string, unknown>;

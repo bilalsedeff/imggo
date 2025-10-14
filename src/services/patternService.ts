@@ -35,6 +35,7 @@ export async function createPattern(
       model_profile: input.model_profile,
       version: input.version ?? 1, // Use input version (0 for drafts, 1+ for published)
       is_active: input.is_active ?? true, // Use input is_active (false for drafts, true for published)
+      parent_pattern_id: input.parent_pattern_id || null, // Link to parent pattern for draft versioning
     });
 
     if (error) {

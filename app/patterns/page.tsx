@@ -273,7 +273,7 @@ export default function PatternsPage() {
 
           {/* Published Patterns Tab Content */}
           {activeTab === "published" && (
-            <div>
+            <div className="min-h-[400px] overflow-y-scroll">
               {isLoadingPatterns ? (
                 <div className="border border-border rounded-lg p-6">
                   <div className="text-center py-12">
@@ -386,7 +386,7 @@ export default function PatternsPage() {
 
           {/* Draft Patterns Tab Content */}
           {activeTab === "drafts" && (
-            <div>
+            <div className="min-h-[400px] overflow-y-scroll">
               {isLoadingDrafts ? (
                 <div className="border border-border rounded-lg p-6">
                   <div className="text-center py-12">

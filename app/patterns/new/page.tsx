@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/providers/auth-provider";
 import {
   Sparkles,
@@ -14,7 +14,10 @@ import {
   AlertCircle,
   RotateCcw,
   PlusCircle,
-  RefreshCw
+  RefreshCw,
+  ArrowLeft,
+  Save,
+  X
 } from "lucide-react";
 import { Navbar } from "@/ui/components/navbar";
 import Link from "next/link";
@@ -36,14 +39,17 @@ interface Pattern {
   instructions: string;
   json_schema: Record<string, unknown> | null;
   version: number;
+  parent_pattern_id?: string | null;
 }
 
 export default function NewPatternPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { session } = useAuth();
 
   // Pattern selection
   const [selectedPatternId, setSelectedPatternId] = useState<string | null>(null);
+  const [parentPatternId, setParentPatternId] = useState<string | null>(null); // Track parent for draft versioning
   const [activePatterns, setActivePatterns] = useState<Pattern[]>([]);
   const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
 
@@ -55,6 +61,7 @@ export default function NewPatternPage() {
   const [originalInstructions, setOriginalInstructions] = useState("");
   const [jsonSchema, setJsonSchema] = useState("");
   const [template, setTemplate] = useState("");
+  const [originalTemplate, setOriginalTemplate] = useState(""); // Track original template for delta detection
 
   // UI state
   const [isGenerating, setIsGenerating] = useState(false);
@@ -70,7 +77,149 @@ export default function NewPatternPage() {
   const [isCheckingName, setIsCheckingName] = useState(false);
   const [nameAvailable, setNameAvailable] = useState<boolean | null>(null);
 
+  // Navigation confirmation dialog
+  const [showExitDialog, setShowExitDialog] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
+
+  // Flag to bypass beforeunload after successful publish
+  const isNavigatingAway = useRef(false);
+
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Helper: Check if user has meaningful content
+  const hasUnsavedContent = (): boolean => {
+    // Update Pattern mode: Only check if template changed (user generated at least once)
+    if (selectedPatternId) {
+      return template !== originalTemplate;
+    }
+
+    // New Pattern mode: Check if any field has content
+    return !!(
+      name.trim() ||
+      instructions.trim() ||
+      template.trim()
+    );
+  };
+
+  // Auto-save draft on page close/navigation (beforeunload)
+  useEffect(() => {
+    const handleBeforeUnload = async (e: BeforeUnloadEvent) => {
+      // Don't show warning if navigating away after successful publish/save
+      if (isNavigatingAway.current) {
+        return;
+      }
+
+      // Only auto-save if there's meaningful content and not already saved
+      const hasContent = name.trim() || instructions.trim() || template.trim();
+      const isNotEmpty = hasContent && (name.trim() || instructions.trim().length >= 10);
+
+      if (isNotEmpty && session?.access_token) {
+        // Prevent default unload to show confirmation
+        e.preventDefault();
+        e.returnValue = '';
+
+        // Auto-save draft in background
+        const cleanTemplate = (text: string): string => {
+          return text
+            .replace(/```json\s*/g, '')
+            .replace(/```yaml\s*/g, '')
+            .replace(/```xml\s*/g, '')
+            .replace(/```csv\s*/g, '')
+            .replace(/```\s*/g, '')
+            .trim();
+        };
+
+        const schemaData: Record<string, unknown> = {};
+        if (template) {
+          const cleaned = cleanTemplate(template);
+          if (format === "json") {
+            try { schemaData.json_schema = JSON.parse(cleaned); } catch { schemaData.json_schema = cleaned; }
+          } else if (format === "yaml") {
+            schemaData.yaml_schema = cleaned;
+          } else if (format === "xml") {
+            schemaData.xml_schema = cleaned;
+          } else if (format === "csv") {
+            schemaData.csv_schema = cleaned;
+          } else if (format === "text") {
+            schemaData.plain_text_schema = cleaned;
+          }
+        }
+
+        // CRITICAL: If updating a pattern, append " (Draft)" to name to avoid unique constraint
+        const draftName = selectedPatternId
+          ? `${name.trim()} (Draft)` // Update mode: add suffix to avoid conflict
+          : name.trim() || `Auto-saved Draft ${new Date().toLocaleString()}`; // New mode: use as-is or default
+
+        const draftPayload = {
+          name: draftName,
+          format,
+          instructions: originalInstructions || instructions,
+          ...schemaData,
+          version: 0,
+          is_active: false,
+          parent_pattern_id: selectedPatternId || null, // Link to parent for versioning
+        };
+
+        // Send beacon to save draft (non-blocking)
+        navigator.sendBeacon(
+          "/api/patterns",
+          new Blob([JSON.stringify(draftPayload)], { type: "application/json" })
+        );
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [name, instructions, template, format, originalInstructions, session]);
+
+  // Intercept browser back/forward button navigation
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      if (hasUnsavedContent()) {
+        e.preventDefault();
+        // Show confirmation dialog
+        // Push current state back so we don't leave the page yet
+        window.history.pushState(null, '', window.location.pathname);
+        setPendingNavigation(document.referrer || "/patterns");
+        setShowExitDialog(true);
+      }
+    };
+
+    // Push initial state to enable popstate detection
+    window.history.pushState(null, '', window.location.pathname);
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [name, instructions, template]);
+
+  // Intercept all link clicks (including Navbar links)
+  useEffect(() => {
+    const handleLinkClick = (e: MouseEvent) => {
+      // Check if clicked element is a link or inside a link
+      const target = e.target as HTMLElement;
+      const link = target.closest('a[href]') as HTMLAnchorElement | null;
+
+      if (link && hasUnsavedContent()) {
+        const href = link.getAttribute('href');
+
+        // Only intercept internal links (not external or hash links)
+        if (href && !href.startsWith('#') && !href.startsWith('http') && !href.startsWith('mailto:')) {
+          // Exclude the "Back to Patterns" button we already handle
+          if (link.closest('button')) return;
+
+          e.preventDefault();
+          e.stopPropagation();
+          setPendingNavigation(href);
+          setShowExitDialog(true);
+        }
+      }
+    };
+
+    document.addEventListener('click', handleLinkClick, true);
+    return () => document.removeEventListener('click', handleLinkClick, true);
+  }, [name, instructions, template]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -115,13 +264,99 @@ export default function NewPatternPage() {
 
   // Load pattern from URL query param (for "Create New Version")
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const patternId = params.get("pattern_id");
+    const patternId = searchParams.get("pattern_id");
 
-    if (patternId && activePatterns.length > 0) {
-      handlePatternSelect(patternId);
+    console.log("[Pattern Studio] URL pattern_id:", patternId);
+    console.log("[Pattern Studio] session:", !!session);
+
+    // Load pattern data directly from URL parameter, no need to wait for activePatterns
+    if (patternId && session?.access_token) {
+      console.log("[Pattern Studio] Loading pattern for Create New Version...");
+
+      // Fetch and load the pattern
+      const loadPattern = async () => {
+        try {
+          const response = await fetch(`/api/patterns/${patternId}`, {
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+          });
+
+          if (!response.ok) {
+            console.error("Failed to fetch pattern details");
+            return;
+          }
+
+          const result = await response.json();
+          const patternData = result.data;
+          console.log("[Pattern Studio] Pattern loaded:", patternData.name, patternData.format);
+
+          // Fill form with pattern data
+          setSelectedPatternId(patternData.id);
+          setParentPatternId(patternData.parent_pattern_id || null); // Track parent for draft versioning
+          setName(patternData.name);
+          setFormat(patternData.format);
+          setOriginalInstructions(patternData.instructions);
+          setInstructions("");
+
+          // Load the appropriate format-specific schema
+          let templatePreview = "";
+          let schemaStr = "";
+
+          switch (patternData.format) {
+            case "json":
+              if (patternData.json_schema) {
+                templatePreview = JSON.stringify(patternData.json_schema, null, 2);
+                schemaStr = templatePreview;
+              }
+              break;
+            case "yaml":
+              if (patternData.yaml_schema) {
+                templatePreview = patternData.yaml_schema;
+              } else if (patternData.json_schema) {
+                templatePreview = jsonToYaml(patternData.json_schema);
+              }
+              break;
+            case "xml":
+              if (patternData.xml_schema) {
+                templatePreview = patternData.xml_schema;
+              } else if (patternData.json_schema) {
+                templatePreview = jsonToXml(patternData.json_schema);
+              }
+              break;
+            case "csv":
+              if (patternData.csv_schema) {
+                templatePreview = patternData.csv_schema;
+              } else if (patternData.json_schema) {
+                templatePreview = jsonToCsv(patternData.json_schema);
+              }
+              break;
+            case "text":
+              if (patternData.plain_text_schema) {
+                templatePreview = patternData.plain_text_schema;
+              } else if (patternData.json_schema) {
+                templatePreview = jsonToText(patternData.json_schema);
+              }
+              break;
+          }
+
+          setJsonSchema(schemaStr);
+          setTemplate(templatePreview);
+          setOriginalTemplate(templatePreview); // Save original for delta detection
+          setIsTemplateEditable(false);
+
+          setNameAvailable(true);
+          setIsValidated(true);
+          setValidationErrors([]);
+        } catch (err) {
+          console.error("Failed to load pattern from URL:", err);
+          setError("Failed to load pattern details");
+        }
+      };
+
+      loadPattern();
     }
-  }, [activePatterns]); // Run after patterns are loaded
+  }, [session, searchParams]); // Removed activePatterns dependency - load directly from URL
 
   // Load draft from sessionStorage on mount
   useEffect(() => {
@@ -166,6 +401,7 @@ export default function NewPatternPage() {
       setOriginalInstructions("");
       setJsonSchema("");
       setTemplate("");
+      setOriginalTemplate(""); // Clear original template
       setNameAvailable(null);
       setIsValidated(false);
       setValidationErrors([]);
@@ -241,6 +477,7 @@ export default function NewPatternPage() {
 
       setJsonSchema(schemaStr);
       setTemplate(templatePreview);
+      setOriginalTemplate(templatePreview); // Save original for delta detection
       setIsTemplateEditable(false); // Don't mark as editable initially - only when user clicks "Edit Template"
 
       setNameAvailable(true); // Pattern name is already valid (skip validation)
@@ -430,6 +667,7 @@ export default function NewPatternPage() {
           }
         }
         setTemplate(templatePreview);
+        setOriginalTemplate(templatePreview); // Reset to published template
         setIsTemplateEditable(false); // Lock template to published version
         setIsValidated(false);
         setValidationErrors([]);
@@ -442,6 +680,7 @@ export default function NewPatternPage() {
       setInstructions("");
       setOriginalInstructions("");
       setTemplate("");
+      setOriginalTemplate(""); // Clear original template
       setIsTemplateEditable(false);
       setIsValidated(false);
       setValidationErrors([]);
@@ -655,8 +894,56 @@ export default function NewPatternPage() {
         }
       }
 
-      if (selectedPatternId) {
-        // Update existing pattern (increment version)
+      // CRITICAL: Check if publishing a draft with a parent pattern
+      if (parentPatternId) {
+        // Publishing a draft → Update PARENT pattern (not the draft itself)
+        // Strip "(Draft)" suffix to use parent's original name
+        const parentName = name.replace(/\s*\(Draft\)\s*$/i, "").trim();
+
+        const updatePayload = {
+          format,
+          instructions: originalInstructions + (instructions ? `\n\n${instructions}` : ""), // Append follow-up
+          ...schemaData, // Spread format-specific schema
+          publish_new_version: true, // Increment version on parent
+        };
+
+        console.log("Publishing draft to parent pattern:", parentPatternId);
+        console.log("Update payload:", JSON.stringify(updatePayload, null, 2));
+
+        const response = await fetch(`/api/patterns/${parentPatternId}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify(updatePayload),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error("Failed to update parent pattern:", errorData);
+          throw new Error(errorData.error?.message || errorData.message || "Failed to publish draft to parent pattern");
+        }
+
+        // Successfully published draft to parent - now delete the draft pattern
+        if (selectedPatternId) {
+          try {
+            await fetch(`/api/patterns/${selectedPatternId}`, {
+              method: "DELETE",
+              headers: {
+                "Authorization": `Bearer ${session.access_token}`,
+              },
+            });
+            console.log("Draft pattern deleted after successful publish");
+          } catch (deleteErr) {
+            console.warn("Failed to delete draft pattern after publish:", deleteErr);
+            // Continue anyway - parent was updated successfully
+          }
+        }
+
+        setSuccess(`Draft published to "${parentName}"! New version created.`);
+      } else if (selectedPatternId) {
+        // Update existing pattern (increment version) - normal versioning workflow
         const updatePayload = {
           format,
           instructions: originalInstructions + (instructions ? `\n\n${instructions}` : ""), // Append follow-up
@@ -732,6 +1019,9 @@ export default function NewPatternPage() {
         setSuccess(`Pattern "${name}" published successfully!`);
       }
 
+      // Set flag to bypass beforeunload warning
+      isNavigatingAway.current = true;
+
       setTimeout(() => {
         window.location.href = "/patterns";
       }, 1500);
@@ -790,13 +1080,19 @@ export default function NewPatternPage() {
       }
 
       // Draft payload: version = 0, is_active = false
+      // CRITICAL: If updating a pattern, append " (Draft)" to name to avoid unique constraint
+      const draftName = selectedPatternId
+        ? `${name.trim()} (Draft)` // Update mode: add suffix to avoid conflict
+        : name.trim() || "Untitled Draft"; // New mode: use as-is or default
+
       const draftPayload = {
-        name: name.trim() || "Untitled Draft",
+        name: draftName,
         format,
         instructions: originalInstructions || instructions,
         ...schemaData,
         version: 0, // CRITICAL: Drafts have version 0
         is_active: false, // CRITICAL: Drafts are inactive
+        parent_pattern_id: selectedPatternId || null, // CRITICAL: Link to parent pattern for versioning
       };
 
       const response = await fetch("/api/patterns", {
@@ -814,7 +1110,10 @@ export default function NewPatternPage() {
       }
 
       const result = await response.json();
-      setSuccess(`Draft "${name || "Untitled"}" saved successfully!`);
+      setSuccess(`Draft "${draftName}" saved successfully!`);
+
+      // Set flag to bypass beforeunload warning
+      isNavigatingAway.current = true;
 
       // Redirect to patterns page after 1.5s
       setTimeout(() => {
@@ -897,16 +1196,109 @@ export default function NewPatternPage() {
     }
   };
 
+  // Navigation handlers with confirmation
+  const handleSaveAndExit = async () => {
+    if (!session?.access_token || !pendingNavigation) return;
+
+    setIsSavingDraft(true);
+    try {
+      const cleanTemplate = (text: string): string => {
+        return text
+          .replace(/```json\s*/g, '')
+          .replace(/```yaml\s*/g, '')
+          .replace(/```xml\s*/g, '')
+          .replace(/```csv\s*/g, '')
+          .replace(/```\s*/g, '')
+          .trim();
+      };
+
+      const schemaData: Record<string, unknown> = {};
+      if (template) {
+        const cleaned = cleanTemplate(template);
+        if (format === "json") {
+          try { schemaData.json_schema = JSON.parse(cleaned); } catch { schemaData.json_schema = cleaned; }
+        } else if (format === "yaml") {
+          schemaData.yaml_schema = cleaned;
+        } else if (format === "xml") {
+          schemaData.xml_schema = cleaned;
+        } else if (format === "csv") {
+          schemaData.csv_schema = cleaned;
+        } else if (format === "text") {
+          schemaData.plain_text_schema = cleaned;
+        }
+      }
+
+      // CRITICAL: If updating a pattern, append " (Draft)" to name to avoid unique constraint
+      const draftName = selectedPatternId
+        ? `${name.trim()} (Draft)` // Update mode: add suffix to avoid conflict
+        : name.trim() || "Untitled Draft"; // New mode: use as-is or default
+
+      const draftPayload = {
+        name: draftName,
+        format,
+        instructions: originalInstructions || instructions,
+        ...schemaData,
+        version: 0,
+        is_active: false,
+        parent_pattern_id: selectedPatternId || null, // Link to parent for versioning
+      };
+
+      const response = await fetch("/api/patterns", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify(draftPayload),
+      });
+
+      if (response.ok) {
+        // Navigate after successful save
+        router.push(pendingNavigation);
+      } else {
+        throw new Error("Failed to save draft");
+      }
+    } catch (err) {
+      console.error("Save and exit error:", err);
+      setError(err instanceof Error ? err.message : "Failed to save draft");
+      setShowExitDialog(false);
+    } finally {
+      setIsSavingDraft(false);
+    }
+  };
+
+  const handleDiscardAndExit = () => {
+    if (pendingNavigation) {
+      router.push(pendingNavigation);
+    }
+  };
+
   return (
     <div className="min-h-screen">
       <Navbar />
       <div className="p-8">
         <div className="max-w-7xl mx-auto">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold">Pattern Studio</h1>
-            <p className="text-muted-foreground mt-2">
-              Create a new pattern to analyze images with AI
-            </p>
+          <div className="mb-8 flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold">Pattern Studio</h1>
+              <p className="text-muted-foreground mt-2">
+                Create a new pattern to analyze images with AI
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                if (hasUnsavedContent()) {
+                  setPendingNavigation("/patterns");
+                  setShowExitDialog(true);
+                } else {
+                  router.push("/patterns");
+                }
+              }}
+              className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg hover:bg-accent transition text-sm"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to Patterns
+            </button>
           </div>
 
         {error && (
@@ -1435,6 +1827,57 @@ export default function NewPatternPage() {
         </div>
         </div>
       </div>
+
+      {/* Exit Confirmation Dialog */}
+      {showExitDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-background border border-border rounded-lg shadow-xl max-w-md w-full p-6 space-y-6 relative">
+            {/* Close button (X) */}
+            <button
+              onClick={() => {
+                setShowExitDialog(false);
+                setPendingNavigation(null);
+              }}
+              disabled={isSavingDraft}
+              className="absolute top-4 right-4 p-1 rounded-lg hover:bg-accent transition disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Close dialog"
+            >
+              <X className="w-5 h-5 text-muted-foreground" />
+            </button>
+
+            <div className="flex items-start gap-3 pr-8">
+              <div className="p-2 rounded-full bg-yellow-500/10">
+                <AlertCircle className="w-5 h-5 text-yellow-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold mb-2">Unsaved Changes</h3>
+                <p className="text-sm text-muted-foreground">
+                  You have unsaved work. Would you like to save it as a draft before leaving?
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={handleSaveAndExit}
+                disabled={isSavingDraft}
+                className="flex items-center justify-center gap-1.5 flex-1 px-3 py-2.5 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>{isSavingDraft ? "Saving..." : "Save as Draft & Exit"}</span>
+              </button>
+
+              <button
+                onClick={handleDiscardAndExit}
+                disabled={isSavingDraft}
+                className="flex items-center justify-center gap-1.5 flex-1 px-3 py-2.5 border border-destructive text-destructive rounded-lg hover:bg-destructive/10 transition text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span>Discard & Exit</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

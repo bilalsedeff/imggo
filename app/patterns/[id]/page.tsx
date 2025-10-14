@@ -1355,9 +1355,11 @@ print(result)`
                           </button>
                         </div>
                       </div>
-                      <pre className="bg-background p-3 rounded text-xs overflow-x-auto max-h-96">
+                      <pre className="bg-background p-3 rounded text-xs overflow-x-auto max-h-96 whitespace-pre-wrap">
                         {typeof currentJob.manifest === 'string'
                           ? currentJob.manifest
+                          : pattern.format === 'text' && currentJob.manifest && typeof currentJob.manifest === 'object' && 'text' in currentJob.manifest
+                          ? currentJob.manifest.text
                           : JSON.stringify(currentJob.manifest, null, 2)}
                       </pre>
                     </div>

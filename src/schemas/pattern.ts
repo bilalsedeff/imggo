@@ -18,7 +18,7 @@ export const PatternNameSchema = z
   .string()
   .min(1, "Name is required")
   .max(255, "Name too long")
-  .regex(/^[a-zA-Z0-9\s\-_]+$/, "Name contains invalid characters");
+  .regex(/^[a-zA-Z0-9\s\-_()]+$/, "Name contains invalid characters (only letters, numbers, spaces, hyphens, underscores, and parentheses allowed)");
 
 // Character limits for optimal AI performance
 export const PATTERN_LIMITS = {
@@ -30,6 +30,11 @@ export const PATTERN_LIMITS = {
 export const InstructionsSchema = z
   .string()
   .min(10, "Instructions must be at least 10 characters")
+  .max(PATTERN_LIMITS.INSTRUCTIONS_MAX, `Instructions cannot exceed ${PATTERN_LIMITS.INSTRUCTIONS_MAX} characters`);
+
+// Relaxed instructions for drafts (no minimum)
+export const DraftInstructionsSchema = z
+  .string()
   .max(PATTERN_LIMITS.INSTRUCTIONS_MAX, `Instructions cannot exceed ${PATTERN_LIMITS.INSTRUCTIONS_MAX} characters`);
 
 /**
@@ -243,12 +248,12 @@ export const PlainTextSchemaValidator = z
   );
 
 /**
- * Publish Pattern Request
+ * Create Pattern Request (with conditional validation for drafts vs published)
  */
 const BaseCreatePatternSchema = z.object({
   name: PatternNameSchema,
   format: ManifestFormatSchema.optional(),
-  instructions: InstructionsSchema,
+  instructions: z.string().max(PATTERN_LIMITS.INSTRUCTIONS_MAX), // Will validate minimum conditionally
   json_schema: JsonSchemaSchema,
   yaml_schema: YamlSchemaValidator,
   xml_schema: XmlSchemaValidator,
@@ -257,6 +262,20 @@ const BaseCreatePatternSchema = z.object({
   model_profile: ModelProfileSchema.optional(),
   version: z.number().int().min(0).optional(), // 0 = draft, 1+ = published
   is_active: z.boolean().optional(), // false = draft, true = published
+  parent_pattern_id: z.string().uuid().nullable().optional(), // Link to parent pattern for draft versioning
+}).superRefine((data, ctx) => {
+  // Only enforce minimum instructions for published patterns (version >= 1)
+  const isDraft = data.version === 0;
+  if (!isDraft && data.instructions.length < 10) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.too_small,
+      minimum: 10,
+      type: "string",
+      inclusive: true,
+      message: "Instructions must be at least 10 characters for published patterns",
+      path: ["instructions"],
+    });
+  }
 });
 
 export const CreatePatternSchema = BaseCreatePatternSchema.transform((data) => ({
@@ -271,6 +290,7 @@ export const CreatePatternSchema = BaseCreatePatternSchema.transform((data) => (
   model_profile: data.model_profile ?? "managed-default",
   version: data.version, // Pass through version (0 for drafts)
   is_active: data.is_active, // Pass through is_active (false for drafts)
+  parent_pattern_id: data.parent_pattern_id, // Pass through parent pattern ID for draft versioning
 }));
 
 export type CreatePatternInput = {
@@ -285,6 +305,7 @@ export type CreatePatternInput = {
   model_profile: string;
   version?: number; // 0 = draft, 1+ = published versions
   is_active?: boolean; // false = draft, true = published
+  parent_pattern_id?: string | null; // Link to parent pattern for draft versioning
 };
 
 /**
@@ -324,6 +345,7 @@ export const PatternSchema = z.object({
   is_active: z.boolean(),
   created_at: z.string().datetime(),
   updated_at: z.string().datetime(),
+  parent_pattern_id: z.string().uuid().nullable().optional(), // Link to parent pattern for draft versioning
 });
 
 export type Pattern = z.infer<typeof PatternSchema>;

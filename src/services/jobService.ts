@@ -138,7 +138,7 @@ export async function getJob(
       .select(
         `
         *,
-        patterns!inner(user_id)
+        patterns!inner(id, name, format, user_id)
       `
       )
       .eq("id", jobId)
@@ -152,9 +152,8 @@ export async function getJob(
       throw error;
     }
 
-    // Remove the join data
-    const { patterns, ...job } = data as { patterns: { user_id: string }; [key: string]: unknown };
-    return job as unknown as Job;
+    // Return with pattern info included
+    return data as unknown as Job;
   } catch (error) {
     logger.error("Exception getting job", error, { job_id: jobId });
     throw error;

@@ -130,6 +130,12 @@ function convertToCSV(manifest: Record<string, unknown>): string {
  */
 function convertToText(manifest: Record<string, unknown>): string {
   try {
+    // Special handling: If manifest is wrapped with "text" field (from plain text inference),
+    // extract and return the text content directly
+    if ('text' in manifest && typeof manifest.text === 'string' && Object.keys(manifest).length === 1) {
+      return manifest.text;
+    }
+
     return formatAsText(manifest, 0);
   } catch (error) {
     throw new Error(`Failed to convert to TEXT: ${error instanceof Error ? error.message : String(error)}`);
