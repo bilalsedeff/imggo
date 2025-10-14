@@ -208,11 +208,11 @@ export default function DashboardPage() {
                     Success Rate ({successRateTimeRange === "24h" ? "Last 24h" : "All Time"})
                   </h3>
                 </div>
-                {/* Time Range Toggle */}
-                <div className="flex items-center gap-1">
+                {/* Time Range Toggle - Vertical stack */}
+                <div className="flex flex-col items-end gap-0.5">
                   <button
                     onClick={() => setSuccessRateTimeRange("24h")}
-                    className={`text-[10px] px-1.5 py-0.5 rounded transition ${
+                    className={`text-[10px] px-1.5 py-0.5 rounded transition leading-none ${
                       successRateTimeRange === "24h"
                         ? "bg-muted text-foreground font-medium"
                         : "text-muted-foreground/40 hover:text-muted-foreground/60"
@@ -222,13 +222,13 @@ export default function DashboardPage() {
                   </button>
                   <button
                     onClick={() => setSuccessRateTimeRange("all")}
-                    className={`text-[10px] px-1.5 py-0.5 rounded transition ${
+                    className={`text-[10px] px-1.5 py-0.5 rounded transition leading-none ${
                       successRateTimeRange === "all"
                         ? "bg-muted text-foreground font-medium"
                         : "text-muted-foreground/40 hover:text-muted-foreground/60"
                     }`}
                   >
-                    Ever
+                    All
                   </button>
                 </div>
               </div>
