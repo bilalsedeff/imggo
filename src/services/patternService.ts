@@ -305,6 +305,7 @@ export async function publishPatternVersion(
     xml_schema?: string | null;
     csv_schema?: string | null;
     plain_text_schema?: string | null;
+    csv_delimiter?: string | null;
   }
 ): Promise<number> {
   try {
@@ -314,15 +315,18 @@ export async function publishPatternVersion(
       format,
     });
 
+    // CRITICAL: Migration 020 changed function signature:
+    // - Removed p_user_id (uses auth.uid() internally)
+    // - Added p_csv_delimiter parameter
     const rpcParams = {
       p_pattern_id: patternId,
-      p_user_id: userId,
       p_instructions: instructions,
       p_format: format,
       p_json_schema: (schemas.json_schema || null) as Database["public"]["Functions"]["publish_pattern_version"]["Args"]["p_json_schema"],
       p_yaml_schema: schemas.yaml_schema || null,
       p_xml_schema: schemas.xml_schema || null,
       p_csv_schema: schemas.csv_schema || null,
+      p_csv_delimiter: schemas.csv_delimiter || 'comma',
       p_plain_text_schema: schemas.plain_text_schema || null,
     };
 

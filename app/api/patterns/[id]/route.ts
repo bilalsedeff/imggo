@@ -83,6 +83,7 @@ export const PATCH = withErrorHandling(
         xml_schema?: string | null;
         csv_schema?: string | null;
         plain_text_schema?: string | null;
+        csv_delimiter?: string | null;
       } = {};
 
       // Set the appropriate schema based on format
@@ -94,6 +95,7 @@ export const PATCH = withErrorHandling(
         schemas.xml_schema = input.xml_schema || null;
       } else if (input.format === "csv") {
         schemas.csv_schema = input.csv_schema || null;
+        schemas.csv_delimiter = input.csv_delimiter || 'comma';
       } else if (input.format === "text") {
         schemas.plain_text_schema = input.plain_text_schema || null;
       }

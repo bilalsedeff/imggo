@@ -319,6 +319,7 @@ export const UpdatePatternSchema = z.object({
   yaml_schema: YamlSchemaValidator,
   xml_schema: XmlSchemaValidator,
   csv_schema: CsvSchemaValidator,
+  csv_delimiter: z.enum(["comma", "semicolon"]).optional(),
   plain_text_schema: PlainTextSchemaValidator.optional(),
   is_active: z.boolean().optional(),
   publish_new_version: z.boolean().optional().default(false),
