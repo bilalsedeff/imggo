@@ -302,13 +302,48 @@ export default function NewPatternPage() {
 
           // CRITICAL: For drafts with parent, show parent in dropdown (not draft itself)
           if (isDraft && hasParent) {
-            // Draft from versioning: Show PARENT pattern in dropdown
-            setDraftId(patternData.id); // CRITICAL: Store draft ID for deletion after publish
+            // Draft from versioning: Fetch parent to get original instructions
+            // This ensures UI looks identical to "Update Pattern" mode
+            const parentResponse = await fetch(`/api/patterns/${hasParent}`, {
+              headers: {
+                Authorization: `Bearer ${session.access_token}`,
+              },
+            });
+
+            if (!parentResponse.ok) {
+              console.error("Failed to fetch parent pattern");
+              setError("Failed to load parent pattern details");
+              return;
+            }
+
+            const parentResult = await parentResponse.json();
+            const parentData = parentResult.data;
+
+            // CRITICAL: Store draft ID and show parent in dropdown
+            setDraftId(patternData.id); // Draft's real ID for deletion
             setSelectedPatternId(hasParent); // Show parent in dropdown
             setName(patternData.name);
             setFormat(patternData.format);
-            setInstructions(patternData.instructions); // Draft's work-in-progress
-            setOriginalInstructions(""); // No original needed - draft has the full state
+
+            // CRITICAL: Parse draft's instructions to extract follow-up
+            // Draft instructions format: "original\n\nfollow-up"
+            const draftInstructions = patternData.instructions;
+            const parentInstructions = parentData.instructions;
+
+            // Check if draft has follow-up by comparing with parent
+            if (draftInstructions.startsWith(parentInstructions)) {
+              // Extract follow-up (everything after "\n\n")
+              const followUp = draftInstructions
+                .substring(parentInstructions.length)
+                .replace(/^\n\n/, ""); // Remove leading "\n\n"
+
+              setOriginalInstructions(parentInstructions); // Parent's original (read-only)
+              setInstructions(followUp); // Draft's follow-up (editable)
+            } else {
+              // Fallback: no clear follow-up, treat whole draft as new instructions
+              setOriginalInstructions(parentInstructions);
+              setInstructions(draftInstructions);
+            }
           } else if (isDraft) {
             // Draft from scratch: No parent, show "Create New Pattern"
             setDraftId(patternData.id); // Store draft ID
