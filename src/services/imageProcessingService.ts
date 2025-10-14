@@ -276,12 +276,16 @@ async function sendWebhookNotification(
       timestamp: new Date().toISOString(),
     };
 
-    // Send to each webhook
-    for (const webhook of webhooks) {
+    // PERFORMANCE: Send all webhooks in parallel using Promise.allSettled
+    // Each webhook delivery is independent and should not block others
+    const webhookPromises = webhooks.map(async (webhook) => {
+      const webhookStart = Date.now();
       try {
+        // Sign payload
         const signature = await signPayload(fullPayload, webhook.secret);
 
-        await fetch(webhook.url, {
+        // Deliver webhook with 30s timeout
+        const response = await fetch(webhook.url, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -289,27 +293,64 @@ async function sendWebhookNotification(
             "User-Agent": "ImgGo-Webhook/1.0",
           },
           body: JSON.stringify(fullPayload),
-          signal: AbortSignal.timeout(30000),
+          signal: AbortSignal.timeout(30000), // 30s timeout per webhook
         });
 
-        // Update last triggered
+        // Check response status
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        // Update last triggered timestamp
         await supabaseServer
           .from("webhooks")
           .update({ last_triggered_at: new Date().toISOString() })
           .eq("id", webhook.id);
 
+        const deliveryTime = Date.now() - webhookStart;
         logger.info("Webhook delivered successfully", {
           webhook_id: webhook.id,
+          webhook_url: webhook.url,
           event: payload.event,
           job_id: payload.job_id,
+          delivery_time_ms: deliveryTime,
+          http_status: response.status,
         });
+
+        return { success: true, webhookId: webhook.id };
       } catch (error) {
+        const deliveryTime = Date.now() - webhookStart;
+        const errorMessage = error instanceof Error ? error.message : String(error);
+
         logger.error("Webhook delivery failed", {
           webhook_id: webhook.id,
-          error: error instanceof Error ? error.message : String(error),
+          webhook_url: webhook.url,
+          event: payload.event,
+          job_id: payload.job_id,
+          error: errorMessage,
+          delivery_time_ms: deliveryTime,
         });
+
+        return { success: false, webhookId: webhook.id, error: errorMessage };
       }
-    }
+    });
+
+    // Wait for all webhooks to complete (success or failure)
+    const results = await Promise.allSettled(webhookPromises);
+
+    // Track delivery metrics
+    const successCount = results.filter(
+      (r) => r.status === "fulfilled" && r.value.success
+    ).length;
+    const failureCount = results.length - successCount;
+
+    logger.info("Webhook delivery batch completed", {
+      event: payload.event,
+      job_id: payload.job_id,
+      total_webhooks: webhooks.length,
+      successful: successCount,
+      failed: failureCount,
+    });
   } catch (error) {
     logger.error("Webhook send failed", {
       error: error instanceof Error ? error.message : String(error),
