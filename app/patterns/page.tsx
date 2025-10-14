@@ -175,44 +175,9 @@ export default function PatternsPage() {
   const handleLoadDraft = async (draftId: string) => {
     if (!session?.access_token) return;
 
-    try {
-      // Fetch full draft details from API
-      const response = await fetch(`/api/patterns/${draftId}`, {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
-
-      if (!response.ok) {
-        console.error("Failed to load draft details");
-        return;
-      }
-
-      const result = await response.json();
-      const draft = result.data;
-
-      // Prepare draft data for Pattern Studio
-      const draftData = {
-        name: draft.name,
-        format: draft.format,
-        instructions: draft.instructions,
-        original_instructions: draft.instructions, // Store as original
-        json_schema: draft.json_schema ? JSON.stringify(draft.json_schema, null, 2) : "",
-        template:
-          draft.format === "json" && draft.json_schema ? JSON.stringify(draft.json_schema, null, 2) :
-          draft.format === "yaml" && draft.yaml_schema ? draft.yaml_schema :
-          draft.format === "xml" && draft.xml_schema ? draft.xml_schema :
-          draft.format === "csv" && draft.csv_schema ? draft.csv_schema :
-          draft.format === "text" && draft.plain_text_schema ? draft.plain_text_schema :
-          "",
-      };
-
-      // Store in sessionStorage
-      sessionStorage.setItem("loadDraft", JSON.stringify(draftData));
-      window.location.href = "/patterns/new";
-    } catch (err) {
-      console.error("Error loading draft:", err);
-    }
+    // Simply navigate to Pattern Studio with draft pattern_id
+    // Pattern Studio will load it via the URL parameter useEffect
+    window.location.href = `/patterns/new?pattern_id=${draftId}`;
   };
 
   return (

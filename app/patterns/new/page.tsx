@@ -296,8 +296,19 @@ export default function NewPatternPage() {
           setParentPatternId(patternData.parent_pattern_id || null); // Track parent for draft versioning
           setName(patternData.name);
           setFormat(patternData.format);
-          setOriginalInstructions(patternData.instructions);
-          setInstructions("");
+
+          // CRITICAL: Check if this is a draft (version=0) or published pattern (version>=1)
+          const isDraft = patternData.version === 0;
+
+          if (isDraft) {
+            // Draft mode: Load as-is, not follow-up mode
+            setInstructions(patternData.instructions); // Show draft's instructions for editing
+            setOriginalInstructions(""); // No original (draft is the working copy)
+          } else {
+            // Published pattern mode: Follow-up mode for versioning
+            setOriginalInstructions(patternData.instructions); // Store original
+            setInstructions(""); // Empty for follow-up request
+          }
 
           // Load the appropriate format-specific schema
           let templatePreview = "";
@@ -358,24 +369,7 @@ export default function NewPatternPage() {
     }
   }, [session, searchParams]); // Removed activePatterns dependency - load directly from URL
 
-  // Load draft from sessionStorage on mount
-  useEffect(() => {
-    const loadDraftData = sessionStorage.getItem("loadDraft");
-    if (loadDraftData) {
-      try {
-        const draft = JSON.parse(loadDraftData);
-        setName(draft.name || "");
-        setFormat(draft.format || "json");
-        setInstructions(draft.instructions || "");
-        setOriginalInstructions(draft.original_instructions || "");
-        setJsonSchema(draft.json_schema || "");
-        setTemplate(draft.template || "");
-        sessionStorage.removeItem("loadDraft"); // Clear after loading
-      } catch (err) {
-        console.error("Failed to load draft:", err);
-      }
-    }
-  }, []);
+  // NOTE: Draft loading removed - now handled via URL parameter (?pattern_id=...)
 
   // Clear template when format changes (to prevent format mismatch)
   useEffect(() => {
