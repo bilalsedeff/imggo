@@ -115,6 +115,9 @@ The template should define the structure for extracting data from images.`;
         .trim();
     }
 
+    // Sanitize field names: replace spaces with underscores in all formats
+    cleanedContent = sanitizeFieldNames(cleanedContent, format);
+
     logger.info("Template generated successfully", {
       format,
       template_length: cleanedContent.length,
@@ -649,6 +652,94 @@ function hashUrl(url: string): string {
     hash = hash & hash;
   }
   return Math.abs(hash).toString(16).substring(0, 8);
+}
+
+/**
+ * Sanitize field names: Replace spaces with underscores
+ * Applies to all formats (JSON keys, CSV headers, YAML keys, XML tags, Plain Text headings)
+ */
+function sanitizeFieldNames(content: string, format: ManifestFormat): string {
+  try {
+    switch (format) {
+      case "json": {
+        // Parse JSON and recursively replace spaces in keys
+        const parsed = JSON.parse(content);
+        const sanitized = sanitizeJsonKeys(parsed);
+        return JSON.stringify(sanitized, null, 2);
+      }
+
+      case "csv": {
+        // Replace spaces in CSV header row (first line)
+        const lines = content.split('\n');
+        if (lines.length > 0 && lines[0]) {
+          lines[0] = lines[0].replace(/([a-zA-Z0-9]+)\s+([a-zA-Z0-9])/g, '$1_$2');
+          // Handle multiple consecutive spaces
+          lines[0] = lines[0].replace(/\s+/g, '_');
+        }
+        return lines.join('\n');
+      }
+
+      case "yaml": {
+        // Replace spaces in YAML keys (key: value format)
+        // Match "key with spaces:" and replace with "key_with_spaces:"
+        return content.replace(/^(\s*)([a-zA-Z][a-zA-Z0-9\s]+):/gm, (_match, indent, key) => {
+          const sanitizedKey = key.trim().replace(/\s+/g, '_');
+          return `${indent}${sanitizedKey}:`;
+        });
+      }
+
+      case "xml": {
+        // Replace spaces in XML tags: <tag name> and </tag name>
+        return content
+          .replace(/<([a-zA-Z][a-zA-Z0-9\s]+)>/g, (_match, tagName) => {
+            const sanitized = tagName.trim().replace(/\s+/g, '_');
+            return `<${sanitized}>`;
+          })
+          .replace(/<\/([a-zA-Z][a-zA-Z0-9\s]+)>/g, (_match, tagName) => {
+            const sanitized = tagName.trim().replace(/\s+/g, '_');
+            return `</${sanitized}>`;
+          });
+      }
+
+      case "text": {
+        // Replace spaces in markdown headings: ## Heading With Spaces
+        return content.replace(/^(#{1,6})\s+(.+)$/gm, (_match, hashes, heading) => {
+          const sanitized = heading.trim().replace(/\s+/g, '_');
+          return `${hashes} ${sanitized}`;
+        });
+      }
+
+      default:
+        return content;
+    }
+  } catch (error) {
+    // If sanitization fails, return original content
+    logger.warn("Field name sanitization failed, using original content", {
+      format,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return content;
+  }
+}
+
+/**
+ * Recursively sanitize JSON object keys
+ */
+function sanitizeJsonKeys(obj: unknown): unknown {
+  if (Array.isArray(obj)) {
+    return obj.map(item => sanitizeJsonKeys(item));
+  }
+
+  if (obj !== null && typeof obj === 'object') {
+    const sanitized: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      const newKey = key.replace(/\s+/g, '_');
+      sanitized[newKey] = sanitizeJsonKeys(value);
+    }
+    return sanitized;
+  }
+
+  return obj;
 }
 
 export function zodSchemaToOpenAI<T extends z.ZodTypeAny>(
