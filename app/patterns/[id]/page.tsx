@@ -628,11 +628,14 @@ console.log(result);`
 
   const pythonExampleFile = pattern
     ? `import requests
+import mimetypes
+
+# Detect MIME type automatically from file extension
+mime_type = mimetypes.guess_type('/path/to/your/image.jpg')[0] or 'application/octet-stream'
 
 with open('/path/to/your/image.jpg', 'rb') as image_file:
-    # Specify filename and MIME type for proper multipart upload
     files = {
-        "image": ("image.jpg", image_file, "image/jpeg")
+        "image": ("image.jpg", image_file, mime_type)
     }
     response = requests.post(
         "${pattern.endpoint_url}",
