@@ -258,6 +258,7 @@ const BaseCreatePatternSchema = z.object({
   yaml_schema: YamlSchemaValidator,
   xml_schema: XmlSchemaValidator,
   csv_schema: CsvSchemaValidator,
+  csv_delimiter: z.enum(["comma", "semicolon"]).optional().default("comma"),
   plain_text_schema: PlainTextSchemaValidator.nullable().optional(),
   model_profile: ModelProfileSchema.optional(),
   version: z.number().int().min(0).optional(), // 0 = draft, 1+ = published
@@ -286,6 +287,7 @@ export const CreatePatternSchema = BaseCreatePatternSchema.transform((data) => (
   yaml_schema: data.yaml_schema,
   xml_schema: data.xml_schema,
   csv_schema: data.csv_schema,
+  csv_delimiter: data.csv_delimiter ?? "comma",
   plain_text_schema: data.plain_text_schema,
   model_profile: data.model_profile ?? "managed-default",
   version: data.version, // Pass through version (0 for drafts)
@@ -301,6 +303,7 @@ export type CreatePatternInput = {
   yaml_schema?: string | null;
   xml_schema?: string | null;
   csv_schema?: string | null;
+  csv_delimiter: "comma" | "semicolon";
   plain_text_schema?: string | null;
   model_profile: string;
   version?: number; // 0 = draft, 1+ = published versions
@@ -339,6 +342,7 @@ export const PatternSchema = z.object({
   yaml_schema: z.string().nullable().optional(),
   xml_schema: z.string().nullable().optional(),
   csv_schema: z.string().nullable().optional(),
+  csv_delimiter: z.enum(["comma", "semicolon"]).optional(),
   plain_text_schema: z.string().nullable().optional(),
   instructions: z.string(),
   model_profile: z.string(),

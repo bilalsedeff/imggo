@@ -212,9 +212,16 @@ export const POST = withErrorHandling(
           format: pattern.format,
         });
 
+        // Fetch pattern for CSV delimiter
+        const patternInfo = await patternService.getPattern(patternId, authContext.userId);
+        if (!patternInfo) {
+          throw new ApiError("Pattern not found", 404);
+        }
+        
         // Convert manifest to requested format
-        const manifestFormat = pattern.format as ManifestFormat;
-        const convertedManifest = convertManifest(result.manifest, manifestFormat);
+        const manifestFormat = patternInfo.format as ManifestFormat;
+        const csvDelimiter = patternInfo.csv_delimiter as "comma" | "semicolon" | undefined;
+        const convertedManifest = convertManifest(result.manifest, manifestFormat, csvDelimiter);
         const contentType = getContentType(manifestFormat);
 
         // Get current rate limit status for headers

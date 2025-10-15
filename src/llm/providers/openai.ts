@@ -37,7 +37,7 @@ The template should define the structure for extracting data from images.`;
     switch (format) {
       case "json":
         systemPrompt += `\n\nFor JSON:
-- Create a valid JSON Schema (Draft 7) or a realistic JSON example
+- Create a valid JSON Schema or a realistic JSON example
 - Include all fields mentioned in instructions
 - Use appropriate data types (string, number, boolean, array, object)
 - Add descriptions for clarity

@@ -18,7 +18,7 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const API_BASE = "http://localhost:3000";
 
 // API Key for authentication
-const API_KEY = "imggo_live_0YIXr7Vl6xVcMsyUWaNaSnDvHcvpE0I4DboS4AOs";
+const API_KEY = process.env.TEST_API_KEY || "";
 
 // Validate env vars
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {

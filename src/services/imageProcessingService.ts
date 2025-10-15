@@ -107,7 +107,9 @@ export async function processImage(
     });
 
     // 🔥 DELETE IMAGE (Privacy & Storage Cost Optimization)
+    console.log("🗑️ ABOUT TO DELETE IMAGE:", { imageUrl, jobId });
     await deleteImageAfterProcessing(imageUrl, jobId);
+    console.log("✅ DELETE IMAGE COMPLETED");
 
     const totalLatency = Date.now() - startTime;
     logger.info("Image processing completed successfully", {
@@ -164,45 +166,79 @@ export async function processImage(
 
 /**
  * Delete image from storage after successful processing (Privacy & Cost)
+ * CRITICAL: This runs AFTER job completes to clean up uploaded images
  */
 async function deleteImageAfterProcessing(
   imageUrl: string,
   jobId: string
 ): Promise<void> {
+  console.log("🔍 DELETE FUNCTION CALLED", { imageUrl, jobId });
+  
   try {
+    logger.info("Attempting to delete image from storage", {
+      job_id: jobId,
+      image_url_preview: imageUrl.substring(0, 100),
+    });
+
     // Extract path from URL
-    // Format: https://.../storage/v1/object/public/images/USER_ID/FILENAME.png
+    // Format: https://.../storage/v1/object/public/images/USER_ID/PATTERN_ID/FILENAME.png
     const pathMatch = imageUrl.match(/\/images\/(.+)$/);
+    
+    console.log("🔍 PATH MATCH RESULT:", { pathMatch });
+    
     if (!pathMatch) {
-      logger.warn("Could not extract image path from URL", {
+      console.error("❌ COULD NOT EXTRACT PATH FROM URL:", imageUrl);
+      logger.warn("Could not extract image path from URL - invalid format", {
         job_id: jobId,
-        image_url: imageUrl.substring(0, 50),
+        image_url: imageUrl,
+        note: "Expected format: .../images/USER_ID/PATTERN_ID/FILENAME.png",
       });
       return;
     }
 
     const imagePath = pathMatch[1];
+    console.log("✅ EXTRACTED PATH:", imagePath);
 
-    const { error } = await supabaseServer.storage
+    logger.info("Extracted image path, attempting deletion", {
+      job_id: jobId,
+      path: imagePath,
+    });
+
+    const { data, error } = await supabaseServer.storage
       .from("images")
       .remove([imagePath]);
 
+    console.log("🔍 SUPABASE DELETE RESULT:", { data, error });
+
     if (error) {
+      console.error("❌ SUPABASE DELETION ERROR:", error);
+      logger.error("Supabase storage deletion error", {
+        job_id: jobId,
+        path: imagePath,
+        error_message: error.message,
+        error_details: JSON.stringify(error),
+      });
       throw error;
     }
 
-    logger.info("Image deleted after successful processing", {
+    console.log("✅ IMAGE DELETED FROM STORAGE:", { path: imagePath, filesDeleted: data?.length });
+    
+    logger.info("✅ Image deleted successfully after processing", {
       job_id: jobId,
       path: imagePath,
+      files_deleted: data?.length || 0,
       privacy_compliant: true,
       storage_optimized: true,
     });
   } catch (error) {
-    // Log but don't fail the job
-    logger.warn("Failed to delete image", {
+    console.error("❌ EXCEPTION IN DELETE FUNCTION:", error);
+    
+    // Log but don't fail the job - deletion failure shouldn't affect successful processing
+    logger.error("❌ Failed to delete image from storage", {
       job_id: jobId,
       error: error instanceof Error ? error.message : String(error),
-      note: "Job succeeded but image cleanup failed",
+      error_stack: error instanceof Error ? error.stack : undefined,
+      note: "Job succeeded but image cleanup failed - manual cleanup may be needed",
     });
   }
 }

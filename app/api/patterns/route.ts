@@ -152,13 +152,19 @@ Respond ONLY with the JSON Schema.`,
     }
   } else if (input.json_schema && input.format !== "json") {
     // Only generate if missing (e.g., API-only pattern creation)
+    // Format should never be undefined due to schema default, but add guard
+    const format = input.format || "json";
+    
     logger.info("Generating format-specific example (not provided from frontend)", {
       user_id: user.userId,
       pattern_name: input.name,
-      format: input.format,
+      format: format,
     });
 
     try {
+      // Determine CSV delimiter from pattern input
+      const csvDelimiterSymbol = input.csv_delimiter === "semicolon" ? "semicolon (;)" : "comma (,)";
+      
       // Get format-specific prompt
       const formatInstructions: Record<string, string> = {
         yaml: `Generate a realistic YAML example that matches this JSON Schema.
@@ -175,10 +181,11 @@ Respond ONLY with the JSON Schema.`,
         csv: `Generate a realistic CSV example that matches this JSON Schema.
 - Create a tabular format with headers in first row
 - Include 2-3 data rows with realistic values (not placeholders)
-- Use proper CSV format with comma separation
+- Use ${csvDelimiterSymbol} as delimiter (IMPORTANT: header AND data rows must use the same delimiter!)
 - For nested objects: flatten them as separate columns or create related tables
-- For arrays: create multiple rows or use semicolon-separated values within a cell
-- Respond ONLY with valid CSV, no markdown code blocks or explanations`,
+- For arrays: create multiple rows or use pipe-separated values within a cell
+- Respond ONLY with valid CSV, no markdown code blocks or explanations
+- Make sure header row uses ${csvDelimiterSymbol} between column names`,
         text: `Generate a realistic plain text example that matches this JSON Schema.
 - Use human-readable format with labels and values
 - Include realistic, contextual values (not placeholders)
@@ -192,11 +199,11 @@ Respond ONLY with the JSON Schema.`,
         messages: [
           {
             role: "system",
-            content: formatInstructions[input.format],
+            content: formatInstructions[format],
           },
           {
             role: "user",
-            content: `JSON Schema:\n\n${JSON.stringify(input.json_schema, null, 2)}\n\nContext: ${input.instructions}\n\nGenerate example in ${input.format.toUpperCase()} format:`,
+            content: `JSON Schema:\n\n${JSON.stringify(input.json_schema, null, 2)}\n\nContext: ${input.instructions}\n\nGenerate example in ${format.toUpperCase()} format:`,
           },
         ],
         temperature: 0.7,

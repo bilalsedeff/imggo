@@ -14,12 +14,19 @@ export type ManifestFormat = "json" | "yaml" | "xml" | "csv" | "text";
  *
  * @param manifest - JSON manifest object
  * @param format - Target format
+ * @param csvDelimiter - CSV delimiter ("comma" or "semicolon"), default "comma"
  * @returns Formatted string
  */
 export function convertManifest(
   manifest: Record<string, unknown>,
-  format: ManifestFormat
+  format: ManifestFormat,
+  csvDelimiter?: "comma" | "semicolon"
 ): string {
+  // SPECIAL: If manifest contains _raw field (from XML/YAML inference), return it directly
+  if ('_raw' in manifest && typeof manifest._raw === 'string') {
+    return manifest._raw;
+  }
+
   switch (format) {
     case "json":
       return JSON.stringify(manifest, null, 2);
@@ -31,7 +38,7 @@ export function convertManifest(
       return convertToXML(manifest);
 
     case "csv":
-      return convertToCSV(manifest);
+      return convertToCSV(manifest, csvDelimiter);
 
     case "text":
       return convertToText(manifest);
@@ -82,9 +89,13 @@ function convertToXML(manifest: Record<string, unknown>): string {
 /**
  * Convert JSON to CSV
  * Handles both rows-based format (from CSV schema inference) and flat objects
+ * @param manifest - JSON manifest object
+ * @param csvDelimiter - CSV delimiter ("comma" or "semicolon"), default "comma"
  */
-function convertToCSV(manifest: Record<string, unknown>): string {
+function convertToCSV(manifest: Record<string, unknown>, csvDelimiter?: "comma" | "semicolon"): string {
   try {
+    const delimiter = csvDelimiter === "semicolon" ? ";" : ",";
+    
     // NEW CSV FORMAT: If manifest has "rows" array, use it directly
     if (manifest.rows && Array.isArray(manifest.rows) && manifest.rows.length > 0) {
       const rows = manifest.rows as Record<string, unknown>[];
@@ -100,6 +111,7 @@ function convertToCSV(manifest: Record<string, unknown>): string {
       const parser = new Parser({
         fields,
         header: true,
+        delimiter,
       });
 
       return parser.parse(rows);
@@ -117,6 +129,7 @@ function convertToCSV(manifest: Record<string, unknown>): string {
     const parser = new Parser({
       fields: ["field", "value"],
       header: true,
+      delimiter,
     });
 
     return parser.parse(data);
