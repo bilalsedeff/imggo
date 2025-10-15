@@ -630,14 +630,16 @@ console.log(result);`
     ? `import requests
 
 with open('/path/to/your/image.jpg', 'rb') as image_file:
+    # Specify filename and MIME type for proper multipart upload
+    files = {
+        "image": ("image.jpg", image_file, "image/jpeg")
+    }
     response = requests.post(
         "${pattern.endpoint_url}",
         headers={
             "Authorization": "Bearer YOUR_API_KEY"
         },
-        files={
-            "image": image_file
-        }
+        files=files
     )
 
 result = response.json()
