@@ -21,8 +21,114 @@ export async function generateTemplate(
   jsonSchema?: Record<string, unknown>,
   csvDelimiter?: "comma" | "semicolon"
 ): Promise<string> {
-  // ... existing generateTemplate code stays the same ...
-  return ""; // Placeholder - keep existing implementation
+  logger.info("Generating template with OpenAI", {
+    format,
+    has_schema: Boolean(jsonSchema),
+    instructions_length: instructions.length
+  });
+
+  try {
+    // Build system prompt based on format
+    let systemPrompt = `You are an expert at creating data extraction schemas.
+Generate a ${format.toUpperCase()} template/schema based on the user's instructions.
+The template should define the structure for extracting data from images.`;
+
+    // Add format-specific guidelines
+    switch (format) {
+      case "json":
+        systemPrompt += `\n\nFor JSON:
+- Create a valid JSON Schema (Draft 7) or a realistic JSON example
+- Include all fields mentioned in instructions
+- Use appropriate data types (string, number, boolean, array, object)
+- Add descriptions for clarity
+- Make it ready for image data extraction`;
+        break;
+
+      case "csv":
+        systemPrompt += `\n\nFor CSV:
+- Create a CSV header row with all column names
+- Add 2-3 example data rows with realistic placeholder values
+- Use ${csvDelimiter === "semicolon" ? "semicolon (;)" : "comma (,)"} as delimiter
+- Keep it simple and tabular
+- Column names should match the data fields in instructions`;
+        break;
+
+      case "yaml":
+        systemPrompt += `\n\nFor YAML:
+- Create a valid YAML structure with proper indentation
+- Include all fields mentioned in instructions
+- Use realistic placeholder values
+- Use proper YAML syntax (key: value, lists with -)
+- Make it readable and well-structured`;
+        break;
+
+      case "xml":
+        systemPrompt += `\n\nFor XML:
+- Create a valid XML structure with root element
+- Include all fields mentioned in instructions
+- Use descriptive tag names
+- Add realistic placeholder values
+- Start with <?xml version="1.0" encoding="UTF-8"?>`;
+        break;
+
+      case "text":
+        systemPrompt += `\n\nFor Plain Text:
+- Create a markdown-style structure with headings
+- Use ## for main sections based on instructions
+- Include realistic placeholder values under each heading
+- Keep it human-readable and well-organized`;
+        break;
+    }
+
+    systemPrompt += `\n\nIMPORTANT:
+- Respond ONLY with the ${format.toUpperCase()} content, no explanations
+- No markdown code blocks (no \`\`\`), just raw ${format.toUpperCase()}
+- Make it complete and ready to use
+- Use realistic placeholder values, not "example" or "placeholder"`;
+
+    const userPrompt = jsonSchema
+      ? `Instructions: ${instructions}\n\nExisting JSON Schema:\n${JSON.stringify(jsonSchema, null, 2)}\n\nGenerate a ${format.toUpperCase()} template based on this schema and instructions.`
+      : `Instructions: ${instructions}\n\nGenerate a complete ${format.toUpperCase()} template for extracting this data from images.`;
+
+    const response = await openai.chat.completions.create({
+      model: MODEL,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.3, // Low for consistency
+      max_tokens: 2000,
+    });
+
+    const content = response.choices[0]?.message?.content?.trim();
+    if (!content) {
+      throw new Error("No content in OpenAI response");
+    }
+
+    // Remove markdown code blocks if AI added them despite instructions
+    let cleanedContent = content;
+    const codeBlockRegex = /^```(?:\w+)?\s*\n/;
+    if (codeBlockRegex.test(content)) {
+      cleanedContent = content
+        .replace(/^```(?:\w+)?\s*\n/, "")
+        .replace(/\n```\s*$/, "")
+        .trim();
+    }
+
+    logger.info("Template generated successfully", {
+      format,
+      template_length: cleanedContent.length,
+      tokens: response.usage?.total_tokens,
+    });
+
+    return cleanedContent;
+  } catch (error) {
+    logger.error("Template generation failed in OpenAI provider", {
+      format,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
 }
 
 /**
@@ -206,7 +312,11 @@ Remember: Change ONLY the values, keep ALL structure/tags/keys identical.`;
     // ========================================================================
     if (format === "csv" && csvSchema) {
       const delimiter = csvDelimiter === "semicolon" ? ";" : ",";
-      const headers = csvSchema.split('\n')[0].split(delimiter).map(h => h.trim());
+      const firstLine = csvSchema.split('\n')[0];
+      if (!firstLine) {
+        throw new Error("CSV schema is empty or missing header row");
+      }
+      const headers = firstLine.split(delimiter).map(h => h.trim());
 
       logger.info("CSV inference with dynamic schema", { headers, delimiter });
 
@@ -368,7 +478,7 @@ function parsePlainTextTemplateHeadings(template: string): HeadingInfo[] {
     if (!trimmed.startsWith('#')) continue;
 
     const match = trimmed.match(/^(#{1,6})\s+(.+)$/);
-    if (match) {
+    if (match && match[1] && match[2]) {
       const level = match[1].length;
       const heading = match[2].trim();
       const propName = heading
