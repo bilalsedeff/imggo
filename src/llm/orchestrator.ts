@@ -25,20 +25,21 @@ export async function generateTemplate(
   modelProfile: ModelProfile = "managed-default"
 ): Promise<string> {
   try {
-    // Generate as JSON first (structured)
+    // For CSV, YAML, XML, and Plain Text - generate directly in target format
+    // JSON conversion doesn't work well for these formats
+    if (format === "csv" || format === "yaml" || format === "xml" || format === "text") {
+      return modelProfile === "oss-detector"
+        ? await oss.generateTemplateOSS(instructions, format)
+        : await openai.generateTemplate(instructions, format, jsonSchema);
+    }
+
+    // For JSON - generate as JSON
     const jsonTemplate =
       modelProfile === "oss-detector"
         ? await oss.generateTemplateOSS(instructions, "json")
         : await openai.generateTemplate(instructions, "json", jsonSchema);
 
-    // Convert to requested format
-    if (format === "json") {
-      return jsonTemplate;
-    }
-
-    // Parse JSON and convert
-    const parsed = JSON.parse(jsonTemplate);
-    return convertFormat(parsed, format);
+    return jsonTemplate;
   } catch (error) {
     logger.error("Template generation failed in orchestrator", error);
     throw error;

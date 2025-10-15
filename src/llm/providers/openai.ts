@@ -669,12 +669,18 @@ function sanitizeFieldNames(content: string, format: ManifestFormat): string {
       }
 
       case "csv": {
-        // Replace spaces in CSV header row (first line)
+        // Replace spaces ONLY in field names, preserve delimiters (comma/semicolon)
         const lines = content.split('\n');
         if (lines.length > 0 && lines[0]) {
-          lines[0] = lines[0].replace(/([a-zA-Z0-9]+)\s+([a-zA-Z0-9])/g, '$1_$2');
-          // Handle multiple consecutive spaces
-          lines[0] = lines[0].replace(/\s+/g, '_');
+          // First, detect delimiter
+          const delimiter = lines[0].includes(';') ? ';' : ',';
+          
+          // Split by delimiter, sanitize each field, rejoin
+          const headers = lines[0].split(delimiter);
+          const sanitizedHeaders = headers.map(header => 
+            header.trim().replace(/\s+/g, '_')
+          );
+          lines[0] = sanitizedHeaders.join(delimiter);
         }
         return lines.join('\n');
       }
