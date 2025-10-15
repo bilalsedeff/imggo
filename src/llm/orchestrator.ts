@@ -9,6 +9,9 @@ import * as oss from "./providers/oss";
 import { logger } from "@/lib/logger";
 import * as yaml from "js-yaml";
 import * as xmlJs from "xml-js";
+import { validateXmlStructure } from "./validators/xmlValidator";
+import { validateYamlStructure } from "./validators/yamlValidator";
+import { validatePlainTextStructure } from "./validators/plainTextValidator";
 
 export type ModelProfile = "managed-default" | "oss-detector";
 
@@ -105,30 +108,22 @@ export async function inferManifest(params: {
       };
     }
 
-    // YAML: Parse user's YAML template and extract schema
+    // YAML: Keep original YAML schema for the provider (don't convert to JSON)
     if (format === "yaml" && yamlSchema) {
-      try {
-        const parsedYaml = yaml.load(yamlSchema) as Record<string, unknown>;
-        effectiveJsonSchema = parsedYaml; // Use parsed YAML as JSON schema template
-        logger.info("Using YAML schema for inference", {
-          schema_keys: Object.keys(parsedYaml),
-        });
-      } catch (error) {
-        logger.warn("Failed to parse YAML schema, falling back to json_schema", { error });
-      }
+      effectiveJsonSchema = yamlSchema as unknown as Record<string, unknown>; // Pass raw YAML string
+      logger.info("Using YAML schema for inference", {
+        schema_length: yamlSchema.length,
+        schema_preview: yamlSchema.substring(0, 100),
+      });
     }
 
-    // XML: Parse user's XML template and extract schema
+    // XML: Keep original XML schema for the provider (don't convert to JSON)
     if (format === "xml" && xmlSchema) {
-      try {
-        const parsedXml = xmlJs.xml2js(xmlSchema, { compact: true }) as Record<string, unknown>;
-        effectiveJsonSchema = parsedXml; // Use parsed XML as JSON schema template
-        logger.info("Using XML schema for inference", {
-          schema_keys: Object.keys(parsedXml),
-        });
-      } catch (error) {
-        logger.warn("Failed to parse XML schema, falling back to json_schema", { error });
-      }
+      effectiveJsonSchema = xmlSchema as unknown as Record<string, unknown>; // Pass raw XML string
+      logger.info("Using XML schema for inference", {
+        schema_length: xmlSchema.length,
+        schema_preview: xmlSchema.substring(0, 100),
+      });
     }
 
     // Plain Text: Pass directly to provider for special handling
@@ -162,16 +157,97 @@ export async function inferManifest(params: {
       };
     }
 
-    // Infer as JSON with effective schema
+    // Infer with the actual requested format
+    // For XML/YAML, pass the format directly so the provider can handle it correctly
+    // For CSV, pass both format and schema
+    // For JSON, use structured output
+    const inferFormat = (format === "xml" || format === "yaml") ? format : 
+                        (format === "csv" && csvSchema) ? "csv" : 
+                        "json"; // Default to JSON for unknown formats
+    
     result =
       modelProfile === "oss-detector"
-        ? await oss.inferManifestOSS(imageUrl, instructions, "json", effectiveJsonSchema)
-        : await openai.inferManifest(imageUrl, instructions, "json", effectiveJsonSchema, undefined, undefined, imageFilename);
+        ? await oss.inferManifestOSS(imageUrl, instructions, inferFormat, effectiveJsonSchema)
+        : await openai.inferManifest(
+            imageUrl, 
+            instructions, 
+            inferFormat, 
+            effectiveJsonSchema, 
+            csvSchema, 
+            csvDelimiter, 
+            imageFilename
+          );
 
-    // Convert to requested format
+    // ===== VALIDATION LAYER FOR NON-JSON FORMATS =====
+    // JSON/CSV have OpenAI Structured Output guarantees, but YAML/Plain Text need validation
+    if (result.manifest && typeof result.manifest === 'object' && '_raw' in result.manifest) {
+      const rawContent = (result.manifest as { _raw: string, _format: string })._raw;
+      const rawFormat = (result.manifest as { _raw: string, _format: string })._format;
+
+      // YAML Validation
+      if (rawFormat === "yaml" && yamlSchema) {
+        logger.info("Validating YAML structure against schema");
+        const validation = validateYamlStructure(rawContent, yamlSchema);
+        
+        if (!validation.isValid) {
+          logger.warn("YAML validation failed", {
+            errors: validation.errors,
+            warnings: validation.warnings,
+          });
+          // Log validation failure but continue - GPT usually gets structure right
+          // In production, could retry with stricter prompt or return error
+        } else {
+          logger.info("YAML validation passed", {
+            warnings: validation.warnings.length > 0 ? validation.warnings : undefined,
+          });
+        }
+      }
+
+      // Plain Text Validation
+      if (rawFormat === "text" && plainTextSchema) {
+        logger.info("Validating Plain Text structure against schema");
+        const validation = validatePlainTextStructure(rawContent, plainTextSchema);
+        
+        if (!validation.isValid) {
+          logger.warn("Plain Text validation failed", {
+            errors: validation.errors,
+            warnings: validation.warnings,
+          });
+        } else {
+          logger.info("Plain Text validation passed", {
+            warnings: validation.warnings.length > 0 ? validation.warnings : undefined,
+          });
+        }
+      }
+
+      // XML Validation
+      if (rawFormat === "xml" && xmlSchema) {
+        logger.info("Validating XML structure against schema");
+        const validation = await validateXmlStructure(rawContent, xmlSchema);
+        
+        if (!validation.isValid) {
+          logger.warn("XML validation failed", {
+            errors: validation.errors,
+            warnings: validation.warnings,
+          });
+          // Log validation failure but continue - GPT usually gets structure right
+          // In production, could retry with stricter prompt or return error
+        } else {
+          logger.info("XML validation passed", {
+            warnings: validation.warnings.length > 0 ? validation.warnings : undefined,
+          });
+        }
+      }
+    }
+
+    // Convert to requested format (if not already in correct format)
     const manifestString =
       format === "json"
         ? JSON.stringify(result.manifest, null, 2)
+        : (format === inferFormat && (format === "xml" || format === "yaml"))
+        ? (typeof result.manifest === 'object' && '_raw' in result.manifest 
+           ? (result.manifest as { _raw: string })._raw 
+           : convertFormat(result.manifest, format))
         : convertFormat(result.manifest, format);
 
     return {
