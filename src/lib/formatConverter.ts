@@ -15,12 +15,14 @@ export type ManifestFormat = "json" | "yaml" | "xml" | "csv" | "text";
  * @param manifest - JSON manifest object
  * @param format - Target format
  * @param csvDelimiter - CSV delimiter ("comma" or "semicolon"), default "comma"
+ * @param csvSchema - CSV schema (for field order)
  * @returns Formatted string
  */
 export function convertManifest(
   manifest: Record<string, unknown>,
   format: ManifestFormat,
-  csvDelimiter?: "comma" | "semicolon"
+  csvDelimiter?: "comma" | "semicolon",
+  csvSchema?: string
 ): string {
   // SPECIAL: If manifest contains _raw field (from XML/YAML inference), return it directly
   if ('_raw' in manifest && typeof manifest._raw === 'string') {
@@ -38,7 +40,7 @@ export function convertManifest(
       return convertToXML(manifest);
 
     case "csv":
-      return convertToCSV(manifest, csvDelimiter);
+      return convertToCSV(manifest, csvDelimiter, csvSchema);
 
     case "text":
       return convertToText(manifest);
@@ -91,8 +93,13 @@ function convertToXML(manifest: Record<string, unknown>): string {
  * Handles both rows-based format (from CSV schema inference) and flat objects
  * @param manifest - JSON manifest object
  * @param csvDelimiter - CSV delimiter ("comma" or "semicolon"), default "comma"
+ * @param csvSchema - CSV schema template for field order
  */
-function convertToCSV(manifest: Record<string, unknown>, csvDelimiter?: "comma" | "semicolon"): string {
+function convertToCSV(
+  manifest: Record<string, unknown>, 
+  csvDelimiter?: "comma" | "semicolon",
+  csvSchema?: string
+): string {
   try {
     const delimiter = csvDelimiter === "semicolon" ? ";" : ",";
     
@@ -100,21 +107,54 @@ function convertToCSV(manifest: Record<string, unknown>, csvDelimiter?: "comma" 
     if (manifest.rows && Array.isArray(manifest.rows) && manifest.rows.length > 0) {
       const rows = manifest.rows as Record<string, unknown>[];
 
-      // Extract all unique keys from all rows
-      const allKeys = new Set<string>();
-      rows.forEach(row => {
-        Object.keys(row).forEach(key => allKeys.add(key));
+      // Transform boolean values to "True"/"False" strings for CSV
+      const transformedRows = rows.map(row => {
+        const transformed: Record<string, unknown> = {};
+        Object.entries(row).forEach(([key, value]) => {
+          if (typeof value === 'boolean') {
+            transformed[key] = value ? 'True' : 'False';
+          } else {
+            transformed[key] = value;
+          }
+        });
+        return transformed;
       });
 
-      const fields = Array.from(allKeys);
+      // GET FIELD ORDER FROM CSV SCHEMA (critical for consistent column order)
+      let fields: string[];
+      if (csvSchema && csvSchema.trim().length > 0) {
+        // Parse header row from CSV schema to get correct field order
+        const headerLine = csvSchema.split('\n')[0]?.trim();
+        if (headerLine) {
+          const headers = headerLine.split(delimiter).map(h => 
+            // Keep original field names - only remove quotes
+            h.trim().replace(/^"|"$/g, '')
+          );
+          fields = headers;
+        } else {
+          // Fallback if header line is empty
+          const allKeys = new Set<string>();
+          transformedRows.forEach(row => {
+            Object.keys(row).forEach(key => allKeys.add(key));
+          });
+          fields = Array.from(allKeys);
+        }
+      } else {
+        // Fallback: extract keys from data (unreliable order, depends on JSON key order)
+        const allKeys = new Set<string>();
+        transformedRows.forEach(row => {
+          Object.keys(row).forEach(key => allKeys.add(key));
+        });
+        fields = Array.from(allKeys);
+      }
 
       const parser = new Parser({
         fields,
-        header: true,
+        header: false, // Don't include header row in response (header defined in pattern schema)
         delimiter,
       });
 
-      return parser.parse(rows);
+      return parser.parse(transformedRows);
     }
 
     // LEGACY FORMAT: Flatten nested objects for backward compatibility

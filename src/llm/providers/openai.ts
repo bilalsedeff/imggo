@@ -115,9 +115,6 @@ The template should define the structure for extracting data from images.`;
         .trim();
     }
 
-    // Sanitize field names: replace spaces with underscores in all formats
-    cleanedContent = sanitizeFieldNames(cleanedContent, format);
-
     logger.info("Template generated successfully", {
       format,
       template_length: cleanedContent.length,
@@ -182,7 +179,8 @@ ${imageFilename ? `\nImage Filename: ${imageFilename}` : ''}
 Analyze this image and provide information for each of the following fields:
 ${headings.map(h => `- ${h.heading}`).join('\n')}
 
-Extract precise, factual information from the image. If something is not visible or unclear, use "Not visible".`;
+Extract precise, factual information from the image. If something is not visible or unclear, use "Not visible".
+Use the exact field names above (case-sensitive) as JSON property keys. Do not rename, add, or remove fields.`;
 
       const response = await openai.chat.completions.create({
         model: MODEL,
@@ -327,10 +325,28 @@ Remember: Change ONLY the values, keep ALL structure/tags/keys identical.`;
       const required: string[] = [];
 
       headers.forEach(header => {
-        const propName = header.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        // Keep original field name - DO NOT normalize (Pattern_Name stays Pattern_Name)
+        const propName = header;
+        
+        // Infer type from column name patterns
+        let fieldType: string = "string";
+        let fieldDescription = `Value for column: ${header}`;
+        
+        // Boolean detection: Is_, Has_, Can_, Should_, etc.
+        if (/^(is|has|can|should|will|does|did)_/i.test(header)) {
+          fieldType = "boolean";
+          fieldDescription = `${header} (boolean: True or False)`;
+        }
+        // Number detection: Count_, Num_, Total_, Amount_, etc.
+        else if (/^(count|num|total|amount|quantity|price|age)_/i.test(header) || 
+                 /_count$|_num$|_total$|_amount$|_quantity$|_price$|_age$/i.test(header)) {
+          fieldType = "number";
+          fieldDescription = `${header} (number)`;
+        }
+        
         properties[propName] = {
-          type: "string",
-          description: `Value for column: ${header}`
+          type: fieldType,
+          description: fieldDescription
         };
         required.push(propName);
       });
@@ -355,14 +371,22 @@ Remember: Change ONLY the values, keep ALL structure/tags/keys identical.`;
 
       const systemPrompt = `You are an expert at extracting structured data from images into CSV format.
 Extract data matching these EXACT column headers: ${headers.join(', ')}
-Create one object per data row/item you observe.`;
+Create one object per data row/item you observe.
+
+IMPORTANT Type Rules:
+- Use EXACT column names as JSON object keys (case-sensitive, no renaming)
+- Boolean fields: Use true/false (not "Yes"/"No" or "True"/"False" strings)
+- Number fields: Use numeric values (not strings)
+- String fields: Use string values`;
 
       const userPrompt = `${instructions}
 
 CSV Headers: ${headers.join(delimiter + ' ')}
 ${imageFilename ? `\nImage Filename: ${imageFilename}` : ''}
 
-Extract all data matching these columns from the image.`;
+Extract all data matching these columns from the image.
+For boolean fields (Is_*, Has_*, Can_*), use true or false (not "Yes"/"No").
+Return JSON objects whose keys exactly match the headers above (including letter case).`;
 
       const response = await openai.chat.completions.create({
         model: MODEL,
@@ -484,10 +508,7 @@ function parsePlainTextTemplateHeadings(template: string): HeadingInfo[] {
     if (match && match[1] && match[2]) {
       const level = match[1].length;
       const heading = match[2].trim();
-      const propName = heading
-        .toLowerCase()
-        .replace(/[^a-z0-9\s]/g, '')
-        .replace(/\s+/g, '_');
+      const propName = heading;
       
       headings.push({ heading, level, propName });
     }
@@ -652,100 +673,6 @@ function hashUrl(url: string): string {
     hash = hash & hash;
   }
   return Math.abs(hash).toString(16).substring(0, 8);
-}
-
-/**
- * Sanitize field names: Replace spaces with underscores
- * Applies to all formats (JSON keys, CSV headers, YAML keys, XML tags, Plain Text headings)
- */
-function sanitizeFieldNames(content: string, format: ManifestFormat): string {
-  try {
-    switch (format) {
-      case "json": {
-        // Parse JSON and recursively replace spaces in keys
-        const parsed = JSON.parse(content);
-        const sanitized = sanitizeJsonKeys(parsed);
-        return JSON.stringify(sanitized, null, 2);
-      }
-
-      case "csv": {
-        // Replace spaces ONLY in field names, preserve delimiters (comma/semicolon)
-        const lines = content.split('\n');
-        if (lines.length > 0 && lines[0]) {
-          // First, detect delimiter
-          const delimiter = lines[0].includes(';') ? ';' : ',';
-          
-          // Split by delimiter, sanitize each field, rejoin
-          const headers = lines[0].split(delimiter);
-          const sanitizedHeaders = headers.map(header => 
-            header.trim().replace(/\s+/g, '_')
-          );
-          lines[0] = sanitizedHeaders.join(delimiter);
-        }
-        return lines.join('\n');
-      }
-
-      case "yaml": {
-        // Replace spaces in YAML keys (key: value format)
-        // Match "key with spaces:" and replace with "key_with_spaces:"
-        return content.replace(/^(\s*)([a-zA-Z][a-zA-Z0-9\s]+):/gm, (_match, indent, key) => {
-          const sanitizedKey = key.trim().replace(/\s+/g, '_');
-          return `${indent}${sanitizedKey}:`;
-        });
-      }
-
-      case "xml": {
-        // Replace spaces in XML tags: <tag name> and </tag name>
-        return content
-          .replace(/<([a-zA-Z][a-zA-Z0-9\s]+)>/g, (_match, tagName) => {
-            const sanitized = tagName.trim().replace(/\s+/g, '_');
-            return `<${sanitized}>`;
-          })
-          .replace(/<\/([a-zA-Z][a-zA-Z0-9\s]+)>/g, (_match, tagName) => {
-            const sanitized = tagName.trim().replace(/\s+/g, '_');
-            return `</${sanitized}>`;
-          });
-      }
-
-      case "text": {
-        // Replace spaces in markdown headings: ## Heading With Spaces
-        return content.replace(/^(#{1,6})\s+(.+)$/gm, (_match, hashes, heading) => {
-          const sanitized = heading.trim().replace(/\s+/g, '_');
-          return `${hashes} ${sanitized}`;
-        });
-      }
-
-      default:
-        return content;
-    }
-  } catch (error) {
-    // If sanitization fails, return original content
-    logger.warn("Field name sanitization failed, using original content", {
-      format,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return content;
-  }
-}
-
-/**
- * Recursively sanitize JSON object keys
- */
-function sanitizeJsonKeys(obj: unknown): unknown {
-  if (Array.isArray(obj)) {
-    return obj.map(item => sanitizeJsonKeys(item));
-  }
-
-  if (obj !== null && typeof obj === 'object') {
-    const sanitized: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(obj)) {
-      const newKey = key.replace(/\s+/g, '_');
-      sanitized[newKey] = sanitizeJsonKeys(value);
-    }
-    return sanitized;
-  }
-
-  return obj;
 }
 
 export function zodSchemaToOpenAI<T extends z.ZodTypeAny>(

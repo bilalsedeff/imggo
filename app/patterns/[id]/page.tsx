@@ -177,6 +177,7 @@ export default function PatternDetailPage() {
         document.removeEventListener("mousedown", handleClickOutside);
       };
     }
+    return undefined;
   }, [showVersionDropdown]);
 
   const copyToClipboard = (text: string, item: string) => {
@@ -608,22 +609,22 @@ print(result)`
 
   const nodeExampleFile = pattern
     ? `const fs = require('fs');
+const axios = require('axios');
 const FormData = require('form-data');
 
 const formData = new FormData();
 formData.append('image', fs.createReadStream('/path/to/your/image.jpg'));
 
-const response = await fetch("${pattern.endpoint_url}", {
-  method: "POST",
+const response = await axios.post("${pattern.endpoint_url}", formData, {
   headers: {
     "Authorization": "Bearer YOUR_API_KEY",
     ...formData.getHeaders()
   },
-  body: formData
+  maxContentLength: Infinity,
+  maxBodyLength: Infinity
 });
 
-const result = await response.json();
-console.log(result);`
+console.log(response.data);`
     : "";
 
   const pythonExampleFile = pattern
@@ -1364,7 +1365,7 @@ print(result)`
                         {typeof currentJob.manifest === 'string'
                           ? currentJob.manifest
                           : pattern.format === 'text' && currentJob.manifest && typeof currentJob.manifest === 'object' && 'text' in currentJob.manifest
-                          ? currentJob.manifest.text
+                          ? String(currentJob.manifest.text)
                           : JSON.stringify(currentJob.manifest, null, 2)}
                       </pre>
                     </div>

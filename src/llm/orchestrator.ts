@@ -190,18 +190,14 @@ export async function inferManifest(params: {
         logger.info("Validating YAML structure against schema");
         const validation = validateYamlStructure(rawContent, yamlSchema);
         
-        if (!validation.isValid) {
-          logger.warn("YAML validation failed", {
-            errors: validation.errors,
-            warnings: validation.warnings,
-          });
-          // Log validation failure but continue - GPT usually gets structure right
-          // In production, could retry with stricter prompt or return error
-        } else {
-          logger.info("YAML validation passed", {
-            warnings: validation.warnings.length > 0 ? validation.warnings : undefined,
-          });
+        if (!validation.isValid || validation.warnings.length > 0) {
+          const issues = [...validation.errors, ...validation.warnings];
+          throw new Error(
+            `YAML schema mismatch: ${issues.length > 0 ? issues.join("; ") : "Unknown mismatch"}`
+          );
         }
+
+        logger.info("YAML validation passed");
       }
 
       // Plain Text Validation
@@ -209,16 +205,14 @@ export async function inferManifest(params: {
         logger.info("Validating Plain Text structure against schema");
         const validation = validatePlainTextStructure(rawContent, plainTextSchema);
         
-        if (!validation.isValid) {
-          logger.warn("Plain Text validation failed", {
-            errors: validation.errors,
-            warnings: validation.warnings,
-          });
-        } else {
-          logger.info("Plain Text validation passed", {
-            warnings: validation.warnings.length > 0 ? validation.warnings : undefined,
-          });
+        if (!validation.isValid || validation.warnings.length > 0) {
+          const issues = [...validation.errors, ...validation.warnings];
+          throw new Error(
+            `Plain text schema mismatch: ${issues.length > 0 ? issues.join("; ") : "Unknown mismatch"}`
+          );
         }
+
+        logger.info("Plain text validation passed");
       }
 
       // XML Validation
@@ -226,30 +220,41 @@ export async function inferManifest(params: {
         logger.info("Validating XML structure against schema");
         const validation = await validateXmlStructure(rawContent, xmlSchema);
         
-        if (!validation.isValid) {
-          logger.warn("XML validation failed", {
-            errors: validation.errors,
-            warnings: validation.warnings,
-          });
-          // Log validation failure but continue - GPT usually gets structure right
-          // In production, could retry with stricter prompt or return error
-        } else {
-          logger.info("XML validation passed", {
-            warnings: validation.warnings.length > 0 ? validation.warnings : undefined,
-          });
+        if (!validation.isValid || validation.warnings.length > 0) {
+          const issues = [...validation.errors, ...validation.warnings];
+          throw new Error(
+            `XML schema mismatch: ${issues.length > 0 ? issues.join("; ") : "Unknown mismatch"}`
+          );
         }
+
+        logger.info("XML validation passed");
       }
     }
 
     // Convert to requested format (if not already in correct format)
-    const manifestString =
-      format === "json"
-        ? JSON.stringify(result.manifest, null, 2)
-        : (format === inferFormat && (format === "xml" || format === "yaml"))
-        ? (typeof result.manifest === 'object' && '_raw' in result.manifest 
-           ? (result.manifest as { _raw: string })._raw 
-           : convertFormat(result.manifest, format))
-        : convertFormat(result.manifest, format);
+    let manifestString: string;
+    if (format === "json") {
+      manifestString = JSON.stringify(result.manifest, null, 2);
+    } else if (format === "csv") {
+      const delimiter = csvDelimiter === "semicolon" ? ";" : ",";
+      if (csvSchema) {
+        manifestString = convertToCSVWithSchema(
+          result.manifest,
+          csvSchema,
+          delimiter
+        );
+      } else {
+        manifestString = convertFormat(result.manifest, format);
+      }
+    } else if (format === "xml" || format === "yaml") {
+      if (format === inferFormat && typeof result.manifest === "object" && "_raw" in result.manifest) {
+        manifestString = (result.manifest as { _raw: string })._raw;
+      } else {
+        manifestString = convertFormat(result.manifest, format);
+      }
+    } else {
+      manifestString = convertFormat(result.manifest, format);
+    }
 
     return {
       manifest: result.manifest,
@@ -400,9 +405,7 @@ function convertToCSVWithSchema(
   // Create data rows
   const dataRows = rows.map(row => {
     return headers.map(header => {
-      // Convert header to property name (same logic as in openai.ts)
-      const propName = header.toLowerCase().replace(/[^a-z0-9]/g, '_');
-      const value = row[propName];
+      const value = (row as Record<string, unknown>)[header];
       return escapeCsvValue(value, delimiter);
     }).join(delimiter);
   });

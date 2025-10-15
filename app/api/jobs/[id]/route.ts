@@ -52,7 +52,9 @@ export const GET = withErrorHandling(
     if (job.manifest && job.status === "succeeded" && desiredFormat !== "json") {
       const convertedManifest = convertManifest(
         job.manifest as Record<string, unknown>,
-        desiredFormat
+        desiredFormat,
+        (pattern.csv_delimiter as "comma" | "semicolon" | undefined) ?? "comma",
+        pattern.csv_schema ?? undefined
       );
       const contentType = getContentType(desiredFormat);
 

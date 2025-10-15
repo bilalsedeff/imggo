@@ -86,10 +86,10 @@ function validateStructure(
       }
     }
 
-    // Warn about extra keys in generated (not in schema)
+    // Extra keys in generated (not in schema) are errors
     for (const key of Object.keys(generated)) {
       if (!(key in schema)) {
-        warnings.push(`Extra element found (not in schema): ${path}.${key}`);
+        errors.push(`Extra element found (not in schema): ${path}.${key}`);
       }
     }
   }

@@ -3,7 +3,7 @@
  * POST /api/patterns/:id/ingest - Enqueue image processing job
  */
 
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import {
   withErrorHandling,
   parseBody,
@@ -17,8 +17,13 @@ import * as jobService from "@/services/jobService";
 import { processImage } from "@/services/imageProcessingService";
 import { logger } from "@/lib/logger";
 import { requireAuthOrApiKey, getRequestIp } from "@/lib/auth-unified";
-import { enforceRateLimit, checkRateLimit, getRateLimitHeaders } from "@/middleware/rateLimitParametric";
-import { uploadToSupabaseStorage } from "@/services/storageService";
+import {
+  enforceRateLimit,
+  checkRateLimit,
+  getRateLimitHeaders,
+  RateLimitStatus,
+} from "@/middleware/rateLimitParametric";
+import { deleteFile, uploadToSupabaseStorage } from "@/services/storageService";
 import { convertManifest, getContentType, ManifestFormat } from "@/lib/formatConverter";
 
 // Configure Vercel function timeout (Pro: 30s max)
@@ -64,24 +69,39 @@ export const POST = withErrorHandling(
 
     // Parametric rate limiting based on user plan
     const endpoint = "/api/patterns/[id]/ingest";
+    const rateLimitStatusRef: { current?: RateLimitStatus } = {};
     const rateLimitResponse = await enforceRateLimit(
       authContext.userId,
       authContext,
       endpoint,
-      requestIp
+      requestIp,
+      { statusRef: rateLimitStatusRef }
     );
     if (rateLimitResponse) return rateLimitResponse;
+
+    let rateLimitStatus = rateLimitStatusRef.current;
+    if (!rateLimitStatus) {
+      logger.warn("Rate limit status missing after enforcement, recomputing", {
+        user_id: authContext.userId,
+        endpoint,
+      });
+      rateLimitStatus = await checkRateLimit(authContext.userId, authContext);
+    }
+    const rateLimitHeaders = getRateLimitHeaders(rateLimitStatus);
 
     const { id: patternId } = await context.params;
     if (!patternId) throw new ApiError("Missing pattern ID", 400);
 
     // Check content type: JSON or multipart/form-data
     const contentType = request.headers.get("content-type") || "";
+    const isMultipart = contentType.includes("multipart/form-data");
     let imageUrl: string;
     let idempotencyKey: string | undefined;
     let extras: Record<string, unknown> | undefined;
 
-    if (contentType.includes("multipart/form-data")) {
+    let uploadedFilePath: string | undefined;
+
+    if (isMultipart) {
       // 📤 MULTIPART: Direct file upload
       logger.info("Processing multipart/form-data upload", {
         pattern_id: patternId,
@@ -130,6 +150,7 @@ export const POST = withErrorHandling(
       });
 
       imageUrl = uploadResult.publicUrl;
+      uploadedFilePath = uploadResult.path;
 
       logger.info("Image uploaded successfully", {
         image_url: imageUrl,
@@ -148,7 +169,7 @@ export const POST = withErrorHandling(
       user_id: authContext.userId,
       auth_type: authContext.authType,
       idempotency_key: idempotencyKey,
-      upload_method: contentType.includes("multipart") ? "multipart" : "json",
+      upload_method: isMultipart ? "multipart" : "json",
     });
 
     // Verify pattern exists and user owns it
@@ -188,6 +209,10 @@ export const POST = withErrorHandling(
       pattern_id: pattern.id,
     });
 
+    const manifestFormat = pattern.format as ManifestFormat;
+    const csvDelimiter = pattern.csv_delimiter as "comma" | "semicolon" | undefined;
+    const csvSchema = pattern.csv_schema || undefined;
+
     // 🚀 HYBRID APPROACH: Try direct processing first (25s timeout)
     try {
       const timeoutPromise = new Promise<never>((_, reject) =>
@@ -212,34 +237,32 @@ export const POST = withErrorHandling(
           format: pattern.format,
         });
 
-        // Fetch pattern for CSV delimiter
-        const patternInfo = await patternService.getPattern(patternId, authContext.userId);
-        if (!patternInfo) {
-          throw new ApiError("Pattern not found", 404);
-        }
-        
-        // Convert manifest to requested format
-        const manifestFormat = patternInfo.format as ManifestFormat;
-        const csvDelimiter = patternInfo.csv_delimiter as "comma" | "semicolon" | undefined;
-        const convertedManifest = convertManifest(result.manifest, manifestFormat, csvDelimiter);
-        const contentType = getContentType(manifestFormat);
-
-        // Get current rate limit status for headers
-        const rateLimitStatus = await checkRateLimit(authContext.userId, authContext);
-        const rateLimitHeaders = getRateLimitHeaders(rateLimitStatus);
-
-        // For non-JSON formats, return plain text response
         if (manifestFormat !== "json") {
-          const response = new Response(convertedManifest, {
+          const convertedManifest = convertManifest(
+            result.manifest,
+            manifestFormat,
+            csvDelimiter,
+            csvSchema
+          );
+          const response = new NextResponse(convertedManifest, {
             status: 200,
-            headers: {
-              "Content-Type": contentType,
-              ...rateLimitHeaders,
-              "X-Job-Id": jobId,
-              "X-Latency-Ms": String(result.latencyMs),
-              "X-Approach": "direct",
-            },
           });
+          response.headers.set("Content-Type", getContentType(manifestFormat));
+          response.headers.set("X-Job-Id", jobId);
+          response.headers.set("X-Latency-Ms", String(result.latencyMs));
+          response.headers.set("X-Approach", "direct");
+          Object.entries(rateLimitHeaders).forEach(([key, value]) => {
+            response.headers.set(key, value);
+          });
+          if (uploadedFilePath) {
+            await deleteFile(uploadedFilePath).catch((error) => {
+              logger.warn("Failed to delete uploaded file after direct success", {
+                path: uploadedFilePath,
+                job_id: jobId,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            });
+          }
           return response;
         }
 
@@ -259,6 +282,16 @@ export const POST = withErrorHandling(
         Object.entries(rateLimitHeaders).forEach(([key, value]) => {
           response.headers.set(key, value);
         });
+
+        if (uploadedFilePath) {
+          await deleteFile(uploadedFilePath).catch((error) => {
+            logger.warn("Failed to delete uploaded file after direct success", {
+              path: uploadedFilePath,
+              job_id: jobId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        }
 
         return response;
       } else {
@@ -296,10 +329,6 @@ export const POST = withErrorHandling(
           extras: extras,
         });
 
-        // Get current rate limit status for headers
-        const rateLimitStatus = await checkRateLimit(authContext.userId, authContext);
-        const rateLimitHeaders = getRateLimitHeaders(rateLimitStatus);
-
         // Return 202 - client should poll
         const response = successResponse(
           {
@@ -328,10 +357,6 @@ export const POST = withErrorHandling(
           error_category: "permanent",
           note: "Job status set to 'failed', will not retry",
         });
-
-        // Get current rate limit status for headers
-        const rateLimitStatus = await checkRateLimit(authContext.userId, authContext);
-        const rateLimitHeaders = getRateLimitHeaders(rateLimitStatus);
 
         // Return 200 with failed status and error details
         const response = successResponse(

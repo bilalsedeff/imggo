@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { LogIn, Mail, Lock, Eye, EyeOff } from "lucide-react";
@@ -11,6 +11,7 @@ type AuthMode = "signin" | "signup";
 
 export default function AuthPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [mode, setMode] = useState<AuthMode>("signin");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -24,9 +25,13 @@ export default function AuthPage() {
 
   const redirectTo = searchParams.get("redirectTo") || "/dashboard";
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  const supabase = useMemo(
+    () =>
+      createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      ),
+    []
   );
 
   const handleEmailAuth = async (e: React.FormEvent) => {
@@ -81,7 +86,8 @@ export default function AuthPage() {
         if (error) throw error;
 
         // Redirect on success
-        window.location.href = redirectTo;
+        router.push(redirectTo);
+        router.refresh();
       }
     } catch (err) {
       console.error("Auth error:", err);

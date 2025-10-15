@@ -21,9 +21,14 @@ import {
 } from "lucide-react";
 import { Navbar } from "@/ui/components/navbar";
 import Link from "next/link";
-import yaml from "js-yaml";
-
-import { PATTERN_LIMITS, validateMarkdownHeadings } from "@/schemas/pattern";
+import {
+  PATTERN_LIMITS,
+  findWhitespaceViolations,
+  validateCsvFormat,
+  validateMarkdownHeadings,
+  validateXmlSyntax,
+  validateYamlSyntax,
+} from "@/schemas/pattern";
 
 type ManifestFormat = "json" | "yaml" | "xml" | "csv" | "text";
 
@@ -51,21 +56,20 @@ export default function NewPatternPage() {
   const [selectedPatternId, setSelectedPatternId] = useState<string | null>(null);
   const [parentPatternId, setParentPatternId] = useState<string | null>(null); // Track parent for draft versioning
   const [draftId, setDraftId] = useState<string | null>(null); // Track draft ID for deletion after publish
-  const [isDraftMode, setIsDraftMode] = useState(false); // Track if editing a draft
-  const [activePatterns, setActivePatterns] = useState<Pattern[]>([]);
-  const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
+const [isDraftMode, setIsDraftMode] = useState(false); // Track if editing a draft
+const [activePatterns, setActivePatterns] = useState<Pattern[]>([]);
+const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
 
   // Form state
   const [name, setName] = useState("");
   const [format, setFormat] = useState<ManifestFormat>("json");
   const [csvDelimiter, setCsvDelimiter] = useState<"comma" | "semicolon">("comma");
+  const [originalCsvDelimiter, setOriginalCsvDelimiter] = useState<"comma" | "semicolon">("comma");
   const [instructions, setInstructions] = useState("");
   const [originalInstructions, setOriginalInstructions] = useState("");
   const [jsonSchema, setJsonSchema] = useState("");
   const [template, setTemplate] = useState("");
   const [originalTemplate, setOriginalTemplate] = useState(""); // Track original template for delta detection
-
-  // UI state
   const [isGenerating, setIsGenerating] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
@@ -155,6 +159,7 @@ export default function NewPatternPage() {
         const draftPayload = {
           name: draftName,
           format,
+          csv_delimiter: format === "csv" ? csvDelimiter : undefined,
           instructions: originalInstructions || instructions,
           ...schemaData,
           version: 0,
@@ -172,7 +177,7 @@ export default function NewPatternPage() {
 
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [name, instructions, template, format, originalInstructions, session]);
+  }, [name, instructions, template, format, originalInstructions, session, csvDelimiter]);
 
   // Intercept browser back/forward button navigation
   useEffect(() => {
@@ -344,7 +349,7 @@ export default function NewPatternPage() {
               setOriginalInstructions(parentInstructions);
               setInstructions(draftInstructions);
             }
-          } else if (isDraft) {
+            } else if (isDraft) {
             // Draft from scratch: No parent, show "Create New Pattern"
             setDraftId(patternData.id); // Store draft ID
             setSelectedPatternId(null);
@@ -352,6 +357,14 @@ export default function NewPatternPage() {
             setFormat(patternData.format);
             setInstructions(patternData.instructions);
             setOriginalInstructions("");
+
+            // Set CSV delimiter for draft
+            if (patternData.format === "csv") {
+              const delimiterValue =
+                (patternData.csv_delimiter as "comma" | "semicolon" | undefined) ?? "comma";
+              setCsvDelimiter(delimiterValue);
+              setOriginalCsvDelimiter(delimiterValue);
+            }
           } else {
             // Published pattern: Follow-up mode for versioning
             setDraftId(null); // Not a draft
@@ -360,6 +373,20 @@ export default function NewPatternPage() {
             setFormat(patternData.format);
             setOriginalInstructions(patternData.instructions); // Store original
             setInstructions(""); // Empty for follow-up request
+
+            // CRITICAL: Set CSV delimiter for published pattern
+            if (patternData.format === "csv") {
+              const delimiterValue =
+                (patternData.csv_delimiter as "comma" | "semicolon" | undefined) ?? "comma";
+              setCsvDelimiter(delimiterValue);
+              setOriginalCsvDelimiter(delimiterValue);
+            }
+          }
+
+          // Default delimiter for non-CSV formats
+          if (patternData.format !== "csv") {
+            setCsvDelimiter("comma");
+            setOriginalCsvDelimiter("comma");
           }
 
           // Load the appropriate format-specific schema
@@ -436,6 +463,28 @@ export default function NewPatternPage() {
     }
   }, [format]); // Run when format changes
 
+  useEffect(() => {
+    if (format !== "csv") {
+      return;
+    }
+
+    setTemplate((currentTemplate) => {
+      if (!currentTemplate || currentTemplate.trim().length === 0) {
+        return currentTemplate;
+      }
+
+      const updatedTemplate = applyDelimiterToCsvTemplate(currentTemplate, csvDelimiter);
+      if (updatedTemplate === currentTemplate) {
+        return currentTemplate;
+      }
+
+      setIsTemplateEditable(false);
+      setIsValidated(true);
+      setValidationErrors([]);
+      return updatedTemplate;
+    });
+  }, [csvDelimiter, format]);
+
   // Handle pattern selection
   const handlePatternSelect = async (patternId: string) => {
     if (patternId === "new") {
@@ -446,6 +495,8 @@ export default function NewPatternPage() {
       setIsDraftMode(false); // Not in draft mode
       setName("");
       setFormat("json");
+      setCsvDelimiter("comma");
+      setOriginalCsvDelimiter("comma");
       setInstructions("");
       setOriginalInstructions("");
       setJsonSchema("");
@@ -485,6 +536,24 @@ export default function NewPatternPage() {
       setFormat(patternData.format);
       setOriginalInstructions(patternData.instructions); // Store original
       setInstructions(""); // Empty for follow-up request
+
+      if (patternData.format === "csv") {
+        const delimiterValue =
+          (patternData.csv_delimiter as "comma" | "semicolon" | undefined) ?? "comma";
+        setCsvDelimiter(delimiterValue);
+        setOriginalCsvDelimiter(delimiterValue);
+      } else {
+        setCsvDelimiter("comma");
+        setOriginalCsvDelimiter("comma");
+      }
+
+      if (patternData.format === "csv") {
+        const delimiterValue =
+          (patternData.csv_delimiter as "comma" | "semicolon" | undefined) ?? "comma";
+        setCsvDelimiter(delimiterValue);
+      } else {
+        setCsvDelimiter("comma");
+      }
 
       // Load the appropriate format-specific schema
       let templatePreview = "";
@@ -580,15 +649,24 @@ export default function NewPatternPage() {
 
   // Check if validation is needed
   const needsValidation = template && isTemplateEditable && !isValidated;
+  const hasTemplateChange = template !== originalTemplate;
+  const hasInstructionChange = instructions.trim().length > 0;
+  const hasCsvDelimiterChange = format === "csv" && csvDelimiter !== originalCsvDelimiter;
+  const hasChanges = selectedPatternId ? (hasTemplateChange || hasInstructionChange || hasCsvDelimiterChange) : true;
 
   // Check if publish is enabled
   const canPublish =
     session &&
     name.trim() &&
-    nameAvailable !== false && // Only block if explicitly unavailable
-    (originalInstructions || instructions.trim().length >= 30) && // Either has original or current is valid
+    nameAvailable !== false &&
     template &&
-    (!isTemplateEditable || isValidated);
+    (!isTemplateEditable || isValidated) &&
+    hasChanges &&
+    (
+      format === "csv" || // allow delimiter-only changes
+      originalInstructions ||
+      instructions.trim().length >= 30
+    );
 
   const handleGenerateTemplate = async () => {
     const isFollowUp = template && originalInstructions;
@@ -725,6 +803,16 @@ export default function NewPatternPage() {
         setValidationErrors([]);
         setError("");
         setSuccess("");
+
+        if (pattern.format === "csv") {
+          const delimiterValue =
+            (pattern.csv_delimiter as "comma" | "semicolon" | undefined) ?? "comma";
+          setOriginalCsvDelimiter(delimiterValue);
+          setCsvDelimiter(delimiterValue);
+        } else {
+          setOriginalCsvDelimiter("comma");
+          setCsvDelimiter("comma");
+        }
       }
     } else {
       // New pattern mode: Clear everything
@@ -738,6 +826,8 @@ export default function NewPatternPage() {
       setValidationErrors([]);
       setError("");
       setSuccess("");
+      setOriginalCsvDelimiter("comma");
+      setCsvDelimiter("comma");
     }
   };
 
@@ -750,42 +840,37 @@ export default function NewPatternPage() {
 
     try {
       if (format === "json") {
-        // JSON validation
-        JSON.parse(template);
+        const parsed = JSON.parse(template);
+        const violations = findWhitespaceViolations(parsed);
+        if (violations.length > 0) {
+          throw new Error(violations[0]);
+        }
       } else if (format === "yaml") {
-        // YAML validation using js-yaml
         if (!template.trim()) {
           throw new Error("YAML content is empty");
         }
-        try {
-          yaml.load(template);
-        } catch (yamlError: unknown) {
-          if (yamlError instanceof Error) {
-            throw new Error(`Invalid YAML: ${yamlError.message}`);
-          }
-          throw new Error("Invalid YAML syntax");
+        const result = validateYamlSyntax(template);
+        if (!result.valid) {
+          throw new Error(result.error || "Invalid YAML");
         }
       } else if (format === "xml") {
-        // XML validation using DOMParser
         if (!template.trim()) {
           throw new Error("XML content is empty");
         }
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(template, "text/xml");
-        const errors = doc.querySelectorAll("parsererror");
-        if (errors.length > 0) {
-          const errorText = errors[0].textContent || "Invalid XML syntax";
-          throw new Error(`Invalid XML: ${errorText}`);
-        }
-        // Check for basic XML structure (root element)
-        if (!doc.documentElement || doc.documentElement.nodeName === "parsererror") {
-          throw new Error("Invalid XML: No root element found");
+        const result = validateXmlSyntax(template);
+        if (!result.valid) {
+          throw new Error(result.error || "Invalid XML");
         }
       } else if (format === "csv") {
         // CSV validation
         if (!template.trim()) {
           throw new Error("CSV content is empty");
         }
+        const formatResult = validateCsvFormat(template);
+        if (!formatResult.valid) {
+          throw new Error(formatResult.error || "Invalid CSV format");
+        }
+
         const delimiter = csvDelimiter === "semicolon" ? ";" : ",";
         const lines = template.trim().split("\n");
 
@@ -954,6 +1039,7 @@ export default function NewPatternPage() {
 
         const updatePayload = {
           format,
+          csv_delimiter: csvDelimiterValue,
           instructions: originalInstructions + (instructions ? `\n\n${instructions}` : ""), // Append follow-up
           ...schemaData, // Spread format-specific schema
           publish_new_version: true, // Increment version on parent
@@ -999,6 +1085,7 @@ export default function NewPatternPage() {
         // Update existing pattern (increment version) - normal versioning workflow
         const updatePayload = {
           format,
+          csv_delimiter: csvDelimiterValue,
           instructions: originalInstructions + (instructions ? `\n\n${instructions}` : ""), // Append follow-up
           ...schemaData, // Spread format-specific schema
           publish_new_version: true, // Increment version on update
@@ -1028,6 +1115,7 @@ export default function NewPatternPage() {
         const newPatternSchema: Record<string, unknown> = {
           name,
           format,
+          csv_delimiter: csvDelimiterValue,
           instructions: originalInstructions || instructions,
         };
 
@@ -1158,6 +1246,7 @@ export default function NewPatternPage() {
       const draftPayload = {
         name: draftName,
         format,
+        csv_delimiter: format === "csv" ? csvDelimiter : undefined,
         instructions: originalInstructions || instructions,
         ...schemaData,
         version: 0, // CRITICAL: Drafts have version 0
@@ -1235,11 +1324,100 @@ export default function NewPatternPage() {
     return toXmlString(obj);
   };
 
+  const getDelimiterChar = (delimiter: "comma" | "semicolon"): string =>
+    delimiter === "semicolon" ? ";" : ",";
+
+  const convertCsvLineDelimiter = (line: string, from: string, to: string): string => {
+    if (from === to) return line;
+    let result = "";
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        const nextChar = line[i + 1];
+        if (inQuotes && nextChar === '"') {
+          // Escaped quote inside quoted value
+          result += char;
+          i += 1;
+          result += line[i];
+          continue;
+        }
+        inQuotes = !inQuotes;
+        result += char;
+        continue;
+      }
+
+      if (char === from && !inQuotes) {
+        result += to;
+      } else {
+        result += char;
+      }
+    }
+
+    return result;
+  };
+
+  const detectCsvDelimiterChar = (line: string): "," | ";" | null => {
+    const countOccurrences = (target: string): number => {
+      let count = 0;
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') {
+          const nextChar = line[i + 1];
+          if (inQuotes && nextChar === '"') {
+            i += 1;
+            continue;
+          }
+          inQuotes = !inQuotes;
+          continue;
+        }
+        if (char === target && !inQuotes) {
+          count += 1;
+        }
+      }
+      return count;
+    };
+
+    const commaCount = countOccurrences(",");
+    const semicolonCount = countOccurrences(";");
+
+    if (commaCount === 0 && semicolonCount === 0) return null;
+    if (commaCount === semicolonCount) return null;
+    return commaCount > semicolonCount ? "," : ";";
+  };
+
+  const applyDelimiterToCsvTemplate = (
+    csvText: string,
+    delimiter: "comma" | "semicolon"
+  ): string => {
+    const targetChar = getDelimiterChar(delimiter);
+    const lines = csvText.split("\n");
+    if (lines.length === 0) return csvText;
+
+    const firstDataLine = lines.find((line) => line.trim().length > 0) ?? "";
+    const detectedDelimiter = detectCsvDelimiterChar(firstDataLine);
+    if (!detectedDelimiter) {
+      // No clear delimiter detected; assume template already uses target
+      return csvText;
+    }
+
+    if (detectedDelimiter === targetChar) {
+      return csvText;
+    }
+
+    const convertedLines = lines.map((line) =>
+      convertCsvLineDelimiter(line, detectedDelimiter, targetChar)
+    );
+    return convertedLines.join("\n");
+  };
+
   const jsonToCsv = (obj: Record<string, unknown>): string => {
-    const delimiter = csvDelimiter === "semicolon" ? ";" : ",";
+    const delimiterChar = getDelimiterChar(csvDelimiter);
     const keys = Object.keys(obj);
-    const values = Object.values(obj).map(v => JSON.stringify(v));
-    return `${keys.join(delimiter)}\n${values.join(delimiter)}`;
+    const values = Object.values(obj).map((v) => JSON.stringify(v));
+    return `${keys.join(delimiterChar)}\n${values.join(delimiterChar)}`;
   };
 
   const jsonToText = (obj: Record<string, unknown>): string => {
@@ -1306,6 +1484,7 @@ export default function NewPatternPage() {
       const draftPayload = {
         name: draftName,
         format,
+        csv_delimiter: format === "csv" ? csvDelimiter : undefined,
         instructions: originalInstructions || instructions,
         ...schemaData,
         version: 0,
@@ -1501,8 +1680,8 @@ export default function NewPatternPage() {
               </div>
             )}
 
-            {/* CSV Delimiter Selection - only show when CSV format is selected */}
-            {!selectedPatternId && format === "csv" && (
+            {/* CSV Delimiter Selection */}
+            {format === "csv" && (
               <div>
                 <label className="block text-sm font-medium mb-2">
                   CSV Delimiter

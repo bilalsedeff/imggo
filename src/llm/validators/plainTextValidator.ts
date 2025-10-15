@@ -34,21 +34,21 @@ export function validatePlainTextStructure(
     }
   }
 
-  // Warn about extra headings
+  // Extra headings should fail validation
   for (const genHeading of generatedHeadings) {
     const found = schemaHeadings.some(
       h => h.level === genHeading.level && h.text === genHeading.text
     );
 
     if (!found) {
-      warnings.push(`Extra heading found (not in schema): ${'#'.repeat(genHeading.level)} ${genHeading.text}`);
+      errors.push(`Extra heading found (not in schema): ${'#'.repeat(genHeading.level)} ${genHeading.text}`);
     }
   }
 
   // Check for preamble (text before first heading)
   const firstHeadingMatch = generatedText.match(/^(.*?)(?=^#)/ms);
   if (firstHeadingMatch && firstHeadingMatch[1] && firstHeadingMatch[1].trim().length > 0) {
-    warnings.push('Text found before first heading (possible preamble)');
+    errors.push('Text found before first heading (preamble not allowed)');
   }
 
   return {

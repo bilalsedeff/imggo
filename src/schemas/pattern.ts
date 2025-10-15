@@ -20,6 +20,75 @@ export const PatternNameSchema = z
   .max(255, "Name too long")
   .regex(/^[a-zA-Z0-9\s\-_()]+$/, "Name contains invalid characters (only letters, numbers, spaces, hyphens, underscores, and parentheses allowed)");
 
+const NO_WHITESPACE_REGEX = /^\S+$/;
+
+function formatPath(path: string, key: string): string {
+  return path === "root" ? key : `${path}.${key}`;
+}
+
+function collectWhitespaceViolations(value: unknown, path: string, errors: string[]): void {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => collectWhitespaceViolations(item, `${path}[${index}]`, errors));
+    return;
+  }
+
+  if (value && typeof value === "object") {
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      if (typeof key === "string" && !NO_WHITESPACE_REGEX.test(key)) {
+        const location = formatPath(path, key);
+        errors.push(`Field name "${key}" contains whitespace at ${location}. Use letters, numbers, or underscores instead of spaces.`);
+      }
+      collectWhitespaceViolations(child, formatPath(path, key), errors);
+    }
+  }
+}
+
+export function findWhitespaceViolations(value: unknown): string[] {
+  const errors: string[] = [];
+  collectWhitespaceViolations(value, "root", errors);
+  return errors;
+}
+
+function collectXmlElementNames(node: unknown, path: string, errors: string[]): void {
+  if (!node) {
+    return;
+  }
+
+  if (Array.isArray(node)) {
+    node.forEach((item, index) => collectXmlElementNames(item, `${path}[${index}]`, errors));
+    return;
+  }
+
+  if (typeof node === "object") {
+    const element = node as { name?: string; elements?: unknown[]; attributes?: Record<string, unknown> };
+
+    if (typeof element.name === "string") {
+      if (!NO_WHITESPACE_REGEX.test(element.name)) {
+        const location = path === "root" ? element.name : `${path}.${element.name}`;
+        errors.push(`Element name "${element.name}" contains whitespace at ${location}. Use underscores or remove spaces.`);
+      }
+
+      if (element.attributes) {
+        for (const attrName of Object.keys(element.attributes)) {
+          if (!NO_WHITESPACE_REGEX.test(attrName)) {
+            const location = path === "root" ? element.name : `${path}.${element.name}`;
+            errors.push(`Attribute name "${attrName}" contains whitespace at ${location}. Use underscores or remove spaces.`);
+          }
+        }
+      }
+
+      if (Array.isArray(element.elements)) {
+        const nextPath = path === "root" ? element.name : `${path}.${element.name}`;
+        element.elements.forEach((child, index) => collectXmlElementNames(child, `${nextPath}[${index}]`, errors));
+      }
+    } else if (element && typeof element === "object") {
+      for (const value of Object.values(element)) {
+        collectXmlElementNames(value, path, errors);
+      }
+    }
+  }
+}
+
 // Character limits for optimal AI performance
 export const PATTERN_LIMITS = {
   INSTRUCTIONS_MAX: 2000,
@@ -46,7 +115,30 @@ export const DraftInstructionsSchema = z
  * System auto-detects and converts example → schema at inference time
  * Using schemas increases response consistency guarantee
  */
-export const JsonSchemaSchema = z.record(z.unknown()).nullable().optional();
+export const JsonSchemaSchema = z
+  .unknown()
+  .nullable()
+  .superRefine((value, ctx) => {
+    if (value === null || value === undefined) {
+      return;
+    }
+
+    if (typeof value !== "object" || Array.isArray(value)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "JSON schema must be an object",
+      });
+      return;
+    }
+
+    const violations = findWhitespaceViolations(value);
+    violations.forEach((message) => {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message,
+      });
+    });
+  });
 
 /**
  * Validates YAML syntax - Hybrid approach
@@ -54,7 +146,23 @@ export const JsonSchemaSchema = z.record(z.unknown()).nullable().optional();
  */
 export function validateYamlSyntax(text: string): { valid: boolean; error?: string } {
   try {
-    yaml.load(text);
+    const parsed = yaml.load(text);
+
+    if (!parsed || typeof parsed !== "object") {
+      return {
+        valid: false,
+        error: "YAML must define an object structure",
+      };
+    }
+
+    const violations = findWhitespaceViolations(parsed);
+    if (violations.length > 0) {
+      return {
+        valid: false,
+        error: violations[0],
+      };
+    }
+
     return { valid: true };
   } catch (error) {
     return {
@@ -89,7 +197,17 @@ export const YamlSchemaValidator = z
  */
 export function validateXmlSyntax(text: string): { valid: boolean; error?: string } {
   try {
-    xmlJs.xml2js(text, { compact: false });
+    const parsed = xmlJs.xml2js(text, { compact: false });
+    const violations: string[] = [];
+    collectXmlElementNames(parsed, "root", violations);
+
+    if (violations.length > 0) {
+      return {
+        valid: false,
+        error: violations[0],
+      };
+    }
+
     return { valid: true };
   } catch (error) {
     return {
@@ -145,10 +263,21 @@ export function validateCsvFormat(text: string): { valid: boolean; error?: strin
   }
 
   // Check if headers exist (at least one column)
-  const headers = headerLine.split(/[,;]/).map(h => h.trim()).filter(h => h.length > 0);
+  const headers = headerLine
+    .split(/[,;]/)
+    .map((h) => h.trim())
+    .filter((h) => h.length > 0);
 
   if (headers.length === 0) {
     return { valid: false, error: "CSV must have at least one column header" };
+  }
+
+  const invalidHeaders = headers.filter((header) => /\s/.test(header));
+  if (invalidHeaders.length > 0) {
+    return {
+      valid: false,
+      error: `CSV headers must not contain whitespace: ${invalidHeaders.join(", ")}`,
+    };
   }
 
   return { valid: true };
@@ -223,6 +352,15 @@ export function validateMarkdownHeadings(text: string): { valid: boolean; error?
       return {
         valid: false,
         error: `Invalid heading progression at line ${curr.line}: cannot jump from level ${prev.level} (${"#".repeat(prev.level)}) to level ${curr.level} (${"#".repeat(curr.level)}). Headings must increment by 1 level at a time.`,
+      };
+    }
+  }
+
+  for (const heading of headings) {
+    if (!NO_WHITESPACE_REGEX.test(heading.text)) {
+      return {
+        valid: false,
+        error: `Heading "${heading.text}" on line ${heading.line} contains whitespace. Use underscores or remove spaces.`,
       };
     }
   }

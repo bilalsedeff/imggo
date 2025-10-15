@@ -19,12 +19,16 @@ import { AuthContext } from "@/lib/auth-unified";
 // RATE LIMIT TRACKING
 // ============================================================================
 
-interface RateLimitStatus {
+export interface RateLimitStatus {
   allowed: boolean;
   limit: number;
   remaining: number;
   resetAt: Date;
   retryAfter?: number; // seconds
+}
+
+interface EnforceRateLimitOptions {
+  statusRef?: { current?: RateLimitStatus };
 }
 
 /**
@@ -181,7 +185,8 @@ export async function enforceRateLimit(
   userId: string,
   authContext: AuthContext,
   endpoint: string,
-  requestIp: string
+  requestIp: string,
+  options?: EnforceRateLimitOptions
 ): Promise<NextResponse | null> {
   // Check rate limit
   const rateLimitStatus = await checkRateLimit(userId, authContext);
@@ -191,6 +196,13 @@ export async function enforceRateLimit(
 
   // If rate limited, return 429 response
   if (!rateLimitStatus.allowed) {
+    if (options?.statusRef) {
+      options.statusRef.current = {
+        ...rateLimitStatus,
+        remaining: 0,
+      };
+    }
+
     const response = NextResponse.json(
       {
         error: "Rate limit exceeded",
@@ -219,6 +231,13 @@ export async function enforceRateLimit(
   }
 
   // Rate limit passed - return null (continue)
+  if (options?.statusRef) {
+    options.statusRef.current = {
+      ...rateLimitStatus,
+      remaining: Math.max(0, rateLimitStatus.remaining - 1),
+    };
+  }
+
   return null;
 }
 
