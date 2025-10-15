@@ -4,6 +4,7 @@ import { useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { LogIn, Mail, Lock, Eye, EyeOff } from "lucide-react";
 
 type AuthMode = "signin" | "signup";
@@ -115,8 +116,14 @@ export default function AuthPage() {
       <div className="w-full max-w-md space-y-8">
         {/* Header */}
         <div className="text-center">
-          <Link href="/" className="text-3xl font-bold inline-block mb-2">
-            ImgGo
+          <Link href="/" className="inline-block mb-4">
+            <Image 
+              src="/logo.svg" 
+              alt="ImgGo" 
+              width={200} 
+              height={100}
+              className="h-12 w-auto mx-auto"
+            />
           </Link>
           <h1 className="text-2xl font-semibold">
             {mode === "signin" ? "Welcome back" : "Create your account"}

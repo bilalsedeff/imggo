@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 export default function Home() {
   return (
@@ -6,8 +7,14 @@ export default function Home() {
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex h-16 items-center justify-between px-8">
-          <Link href="/" className="text-2xl font-bold">
-            ImgGo
+          <Link href="/" className="flex items-center -ml-6">
+            <Image 
+              src="/logo.svg" 
+              alt="ImgGo" 
+              width={280} 
+              height={140}
+              className="h-16 w-auto"
+            />
           </Link>
           <Link
             href="/auth/signin"
@@ -21,7 +28,16 @@ export default function Home() {
       {/* Main Content */}
       <div className="flex flex-1 flex-col items-center justify-center px-8 pt-16">
         <main className="text-center w-full max-w-4xl mx-auto">
-          <h1 className="text-6xl font-bold mb-6">ImgGo</h1>
+          <div className="mb-8 flex justify-center">
+            <Image 
+              src="/logo.svg" 
+              alt="ImgGo" 
+              width={400} 
+              height={200}
+              className="w-full max-w-md h-auto"
+              priority
+            />
+          </div>
           <p className="text-xl text-muted-foreground mb-8 mx-auto max-w-2xl">
             Turn images into strictly schema-conformant manifests.
             <br />

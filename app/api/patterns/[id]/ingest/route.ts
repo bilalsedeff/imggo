@@ -20,10 +20,34 @@ import { requireAuthOrApiKey, getRequestIp } from "@/lib/auth-unified";
 import { enforceRateLimit, checkRateLimit, getRateLimitHeaders } from "@/middleware/rateLimitParametric";
 import { uploadToSupabaseStorage } from "@/services/storageService";
 import { convertManifest, getContentType, ManifestFormat } from "@/lib/formatConverter";
-import { z } from "zod";
 
 // Configure Vercel function timeout (Pro: 30s max)
 export const maxDuration = 30;
+
+/**
+ * Determine if an error is transient (retryable) or permanent
+ * Transient errors: Network issues, temporary API failures, timeouts
+ * Permanent errors: Invalid schema, missing files, authentication failures
+ */
+function isTransientError(errorMsg: string): boolean {
+  const transientPatterns = [
+    /timeout/i,
+    /network/i,
+    /ECONNREFUSED/i,
+    /ECONNRESET/i,
+    /ETIMEDOUT/i,
+    /socket hang up/i,
+    /rate limit/i,
+    /429/i, // Too Many Requests
+    /503/i, // Service Unavailable
+    /502/i, // Bad Gateway
+    /504/i, // Gateway Timeout
+    /downloading/i, // Image download issues
+    /fetch.*failed/i,
+  ];
+
+  return transientPatterns.some((pattern) => pattern.test(errorMsg));
+}
 
 export const POST = withErrorHandling(
   async (
@@ -234,46 +258,94 @@ export const POST = withErrorHandling(
         throw new Error(result.error || "Processing failed");
       }
     } catch (error) {
-      // FALLBACK: Enqueue to PGMQ for worker processing
       const errorMsg = error instanceof Error ? error.message : "Unknown error";
       const isTimeout = errorMsg === "PROCESSING_TIMEOUT";
 
-      logger.warn("Direct processing failed, falling back to queue", {
-        job_id: jobId,
-        reason: isTimeout ? "timeout" : "error",
-        error: errorMsg,
-      });
+      // 🔀 SMART RETRY STRATEGY:
+      // 1. TIMEOUT → Always retry in queue (needs more time)
+      // 2. TRANSIENT ERROR → Retry with exponential backoff (network glitches)
+      // 3. PERMANENT ERROR → Return error immediately (invalid schema, etc.)
 
-      // Enqueue job for background processing
-      await jobService.enqueueExistingJob(jobId, {
-        job_id: jobId,
-        pattern_id: pattern.id,
-        image_url: imageUrl,
-        extras: extras,
-      });
+      const isRetryable = isTimeout || isTransientError(errorMsg);
 
-      // Get current rate limit status for headers
-      const rateLimitStatus = await checkRateLimit(authContext.userId, authContext);
-      const rateLimitHeaders = getRateLimitHeaders(rateLimitStatus);
-
-      // Return 202 - client should poll
-      const response = successResponse(
-        {
+      if (isRetryable) {
+        // ⏱️ RETRYABLE: Enqueue to PGMQ for worker retry
+        logger.warn("Direct processing failed with retryable error", {
           job_id: jobId,
-          status: "queued",
-          message: "Job queued for background processing",
-          approach: "queued",
-          reason: isTimeout ? "Processing timeout, moved to queue" : "Processing error, moved to queue",
-        },
-        202
-      );
+          reason: isTimeout ? "timeout" : "transient_error",
+          error: errorMsg,
+          retry_strategy: "queue_fallback",
+        });
 
-      // Add rate limit headers
-      Object.entries(rateLimitHeaders).forEach(([key, value]) => {
-        response.headers.set(key, value);
-      });
+        // Reset job status to 'queued' for worker retry
+        // Job's retry_count will be incremented by worker
+        await jobService.resetJobToQueued(jobId);
 
-      return response;
+        // Enqueue job for background processing
+        await jobService.enqueueExistingJob(jobId, {
+          job_id: jobId,
+          pattern_id: pattern.id,
+          image_url: imageUrl,
+          extras: extras,
+        });
+
+        // Get current rate limit status for headers
+        const rateLimitStatus = await checkRateLimit(authContext.userId, authContext);
+        const rateLimitHeaders = getRateLimitHeaders(rateLimitStatus);
+
+        // Return 202 - client should poll
+        const response = successResponse(
+          {
+            job_id: jobId,
+            status: "queued",
+            message: "Job queued for background processing",
+            approach: "queued",
+            reason: isTimeout
+              ? "Processing timeout, moved to queue for retry"
+              : "Transient error, moved to queue for retry",
+          },
+          202
+        );
+
+        // Add rate limit headers
+        Object.entries(rateLimitHeaders).forEach(([key, value]) => {
+          response.headers.set(key, value);
+        });
+
+        return response;
+      } else {
+        // ❌ PERMANENT ERROR: Job already marked as failed, do not retry
+        logger.error("Direct processing failed with permanent error", {
+          job_id: jobId,
+          error: errorMsg,
+          error_category: "permanent",
+          note: "Job status set to 'failed', will not retry",
+        });
+
+        // Get current rate limit status for headers
+        const rateLimitStatus = await checkRateLimit(authContext.userId, authContext);
+        const rateLimitHeaders = getRateLimitHeaders(rateLimitStatus);
+
+        // Return 200 with failed status and error details
+        const response = successResponse(
+          {
+            job_id: jobId,
+            status: "failed",
+            error: errorMsg,
+            message: "Processing failed permanently",
+            approach: "direct",
+            retryable: false,
+          },
+          200 // 200 OK but with failed status
+        );
+
+        // Add rate limit headers
+        Object.entries(rateLimitHeaders).forEach(([key, value]) => {
+          response.headers.set(key, value);
+        });
+
+        return response;
+      }
     }
   }
 );

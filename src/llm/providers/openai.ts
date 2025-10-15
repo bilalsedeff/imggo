@@ -173,24 +173,28 @@ CRITICAL REQUIREMENTS FOR PLAIN TEXT OUTPUT:
 1. PRESERVE THE EXACT TEMPLATE FORMAT - Do not change any headers, structure, or formatting
 2. MAINTAIN THE EXACT ORDER of all sections as they appear in the template
 3. KEEP ALL MARKDOWN HEADERS (# symbols) exactly as shown in the template
-4. REPLACE ONLY the placeholder values (like "[To be determined from image]") with actual extracted information
-5. If information is not visible in the image, write "Not visible" or "Unknown"
-6. Do NOT add, remove, or reorder any sections
-7. Do NOT change the capitalization or wording of headers
-8. The output must be character-for-character identical to the template structure, with only the values filled in
+4. OUTPUT ONLY THE FILLED TEMPLATE - Start directly with the first heading (#)
+5. NO INTRODUCTORY TEXT (like "I'm unable to see..." or "Here's the analysis:")
+6. NO EXPLANATORY PARAGRAPHS before the template
+7. NO CONCLUDING REMARKS after the template
+8. REPLACE ONLY the placeholder values (like "[To be determined from image]") with actual extracted information
+9. If information is not visible in the image, write "Not visible" or "Unknown"
+10. Do NOT add, remove, or reorder any sections
+11. Do NOT change the capitalization or wording of headers
+12. The output must be character-for-character identical to the template structure, with only the values filled in
 
 Example:
 Template: "# Book Title\n[To be determined from image]"
 Correct output: "# Book Title\nThe Great Gatsby"
-WRONG output: "book title: The Great Gatsby" ❌
-WRONG output: "Title: The Great Gatsby" ❌`;
+WRONG output: "I see a book. # Book Title\nThe Great Gatsby" ❌
+WRONG output: "book title: The Great Gatsby" ❌`;
 
       const userPrompt = `${instructions}
 
 TEMPLATE TO FILL (preserve this exact structure):
 ${plainTextSchema}
 
-Analyze the image and fill in ONLY the placeholder values in the template above. Keep everything else exactly the same.`;
+Analyze the image and fill in ONLY the placeholder values in the template above. Keep everything else exactly the same. Start your response directly with the first heading.`;
 
       // For plain text, use regular completion (no JSON Schema enforcement)
       const response = await openai.chat.completions.create({
@@ -217,14 +221,18 @@ Analyze the image and fill in ONLY the placeholder values in the template above.
         throw new Error("No content in OpenAI response");
       }
 
+      // Clean output: Remove any text before the first heading
+      const cleanedContent = cleanPlainTextOutput(content);
+
       // For plain text, return as-is (wrapped in manifest object for consistency)
-      const manifest = { text: content.trim() };
+      const manifest = { text: cleanedContent };
       const latencyMs = Date.now() - startTime;
 
       logger.info("Plain text manifest inferred successfully", {
         latency_ms: latencyMs,
         tokens: response.usage?.total_tokens,
-        preview: content.substring(0, 200),
+        preview: cleanedContent.substring(0, 200),
+        cleaned: content !== cleanedContent, // Log if we had to clean
       });
 
       return {
@@ -574,6 +582,19 @@ function hashUrl(url: string): string {
     hash = hash & hash;
   }
   return Math.abs(hash).toString(16).substring(0, 8);
+}
+
+/**
+ * Clean plain text output by removing any content before the first heading
+ * LLM sometimes adds explanatory text before the schema - we trim it
+ * Ultra-simple: Find first '#', remove everything before it
+ */
+function cleanPlainTextOutput(output: string): string {
+  const firstHashIndex = output.indexOf('#');
+  if (firstHashIndex === -1) {
+    return output.trim(); // No headings found, return as-is
+  }
+  return output.substring(firstHashIndex).trim();
 }
 
 /**

@@ -208,7 +208,8 @@ async function deleteImageAfterProcessing(
 }
 
 /**
- * Update job status in database
+ * Update job status in database with IMMUTABILITY PROTECTION
+ * 🔒 CRITICAL: Terminal states (succeeded/failed) cannot be overwritten
  */
 async function updateJobStatus(
   jobId: string,
@@ -220,6 +221,41 @@ async function updateJobStatus(
   } = {}
 ): Promise<void> {
   const now = new Date().toISOString();
+
+  // 🛡️ IMMUTABILITY CHECK: Prevent overwriting terminal states
+  const { data: currentJob, error: fetchError } = await supabaseServer
+    .from("jobs")
+    .select("id, status, error, manifest, completed_at")
+    .eq("id", jobId)
+    .single();
+
+  if (fetchError) {
+    logger.error("Failed to fetch current job status", {
+      job_id: jobId,
+      error: fetchError.message,
+    });
+    throw fetchError;
+  }
+
+  // If job is in a terminal state, prevent overwriting
+  const terminalStates = ["succeeded", "failed"];
+  if (currentJob && terminalStates.includes(currentJob.status)) {
+    logger.error("CRITICAL: Attempted to overwrite terminal job status", {
+      job_id: jobId,
+      current_status: currentJob.status,
+      attempted_status: status,
+      current_error: currentJob.error,
+      attempted_error: updates.error,
+      has_manifest: !!currentJob.manifest,
+      completed_at: currentJob.completed_at,
+      violation_type: "status_immutability",
+    });
+
+    // 🚨 DO NOT update - throw error to prevent data loss
+    throw new Error(
+      `Job ${jobId} is already in terminal state '${currentJob.status}' and cannot be updated to '${status}'`
+    );
+  }
 
   const updateData: Record<string, unknown> = {
     status,
@@ -243,6 +279,14 @@ async function updateJobStatus(
     });
     throw error;
   }
+
+  logger.info("Job status updated successfully", {
+    job_id: jobId,
+    old_status: currentJob.status,
+    new_status: status,
+    has_error: !!updates.error,
+    has_manifest: !!updates.manifest,
+  });
 }
 
 /**

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useAuth } from "@/providers/auth-provider";
@@ -37,8 +38,14 @@ export function Navbar() {
   return (
     <header className="border-b border-border bg-background">
       <div className="max-w-7xl mx-auto flex h-16 items-center justify-between px-8">
-        <Link href="/dashboard" className="text-2xl font-bold hover:opacity-80 transition">
-          ImgGo
+        <Link href="/dashboard" className="flex items-center hover:opacity-80 transition -ml-6">
+          <Image 
+            src="/logo.svg" 
+            alt="ImgGo" 
+            width={280} 
+            height={140}
+            className="h-16 w-auto"
+          />
         </Link>
 
         <nav className="flex items-center gap-6">

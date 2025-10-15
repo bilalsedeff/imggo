@@ -202,6 +202,38 @@ export async function listJobs(
 }
 
 /**
+ * Reset job status to 'queued' for timeout fallback retry
+ * ONLY used when direct processing times out (not errors)
+ */
+export async function resetJobToQueued(jobId: string): Promise<void> {
+  try {
+    logger.info("Resetting job to queued for retry", { job_id: jobId });
+
+    const updateData: Database["public"]["Tables"]["jobs"]["Update"] = {
+      status: "queued",
+      error: null, // Clear any previous error
+      started_at: null, // Reset timing
+      completed_at: null,
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabaseServer.from("jobs") as any)
+      .update(updateData)
+      .eq("id", jobId);
+
+    if (error) {
+      logger.error("Failed to reset job to queued", error, { job_id: jobId });
+      throw error;
+    }
+
+    logger.info("Job reset to queued successfully", { job_id: jobId });
+  } catch (error) {
+    logger.error("Exception resetting job to queued", error);
+    throw error;
+  }
+}
+
+/**
  * Update job status (used by worker)
  */
 export async function updateJobStatus(
