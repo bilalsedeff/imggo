@@ -324,45 +324,15 @@ export function validateMarkdownHeadings(text: string): { valid: boolean; error?
     }
   });
 
-  // Must have at least one heading
   if (headings.length === 0) {
-    return { valid: false, error: "Plain Text pattern must have at least one heading (# Main Heading)" };
+    return { valid: false, error: "Plain Text schema must include at least one heading starting with '#'" };
   }
 
-  // First heading must be level 1 (single #)
   if (headings[0].level !== 1) {
     return {
       valid: false,
-      error: `First heading must be level 1 (single #). Found level ${headings[0].level} at line ${headings[0].line}`,
+      error: `First heading must start with a single '#'. Found level ${headings[0].level} on line ${headings[0].line}`,
     };
-  }
-
-  // Validate heading progression
-  for (let i = 1; i < headings.length; i++) {
-    const prev = headings[i - 1];
-    const curr = headings[i];
-
-    // Can stay same level or go back to any previous level
-    if (curr.level <= prev.level) {
-      continue;
-    }
-
-    // Can only increment by 1
-    if (curr.level > prev.level + 1) {
-      return {
-        valid: false,
-        error: `Invalid heading progression at line ${curr.line}: cannot jump from level ${prev.level} (${"#".repeat(prev.level)}) to level ${curr.level} (${"#".repeat(curr.level)}). Headings must increment by 1 level at a time.`,
-      };
-    }
-  }
-
-  for (const heading of headings) {
-    if (!NO_WHITESPACE_REGEX.test(heading.text)) {
-      return {
-        valid: false,
-        error: `Heading "${heading.text}" on line ${heading.line} contains whitespace. Use underscores or remove spaces.`,
-      };
-    }
   }
 
   return { valid: true };

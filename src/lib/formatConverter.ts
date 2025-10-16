@@ -189,7 +189,15 @@ function convertToText(manifest: Record<string, unknown>): string {
       return manifest.text;
     }
 
-    return formatAsText(manifest, 0);
+    const lines: string[] = ["# Overview"];
+
+    Object.entries(manifest).forEach(([key, value]) => {
+      lines.push(`## ${key}`);
+      lines.push(formatAsText(value, 1));
+      lines.push("");
+    });
+
+    return lines.join("\n").trim();
   } catch (error) {
     throw new Error(`Failed to convert to TEXT: ${error instanceof Error ? error.message : String(error)}`);
   }

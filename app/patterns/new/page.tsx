@@ -45,6 +45,11 @@ interface Pattern {
   json_schema: Record<string, unknown> | null;
   version: number;
   parent_pattern_id?: string | null;
+  csv_delimiter?: string | null;
+  yaml_schema?: string | null;
+  xml_schema?: string | null;
+  csv_schema?: string | null;
+  plain_text_schema?: string | null;
 }
 
 export default function NewPatternPage() {
@@ -297,6 +302,8 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
           const result = await response.json();
           const patternData = result.data;
           console.log("[Pattern Studio] Pattern loaded:", patternData.name, patternData.format);
+          console.log("[Pattern Studio] CSV Delimiter from API:", patternData.csv_delimiter);
+          console.log("[Pattern Studio] Full pattern data:", patternData);
 
           // CRITICAL: Check if this is a draft (version=0) or published pattern (version>=1)
           const isDraft = patternData.version === 0;
@@ -362,8 +369,13 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
             if (patternData.format === "csv") {
               const delimiterValue =
                 (patternData.csv_delimiter as "comma" | "semicolon" | undefined) ?? "comma";
-              setCsvDelimiter(delimiterValue);
-              setOriginalCsvDelimiter(delimiterValue);
+
+              // Force state update with timeout to ensure React re-renders
+              setTimeout(() => {
+                setCsvDelimiter(delimiterValue);
+                setOriginalCsvDelimiter(delimiterValue);
+                console.log("[Pattern Studio] Draft delimiter state updated to:", delimiterValue);
+              }, 0);
             }
           } else {
             // Published pattern: Follow-up mode for versioning
@@ -376,10 +388,18 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
 
             // CRITICAL: Set CSV delimiter for published pattern
             if (patternData.format === "csv") {
+              console.log("[Pattern Studio] Setting CSV delimiter for published pattern");
+              console.log("[Pattern Studio] Raw csv_delimiter:", patternData.csv_delimiter);
               const delimiterValue =
                 (patternData.csv_delimiter as "comma" | "semicolon" | undefined) ?? "comma";
-              setCsvDelimiter(delimiterValue);
-              setOriginalCsvDelimiter(delimiterValue);
+              console.log("[Pattern Studio] Final delimiter value to set:", delimiterValue);
+
+              // Force state update with timeout to ensure React re-renders
+              setTimeout(() => {
+                setCsvDelimiter(delimiterValue);
+                setOriginalCsvDelimiter(delimiterValue);
+                console.log("[Pattern Studio] Delimiter state updated to:", delimiterValue);
+              }, 0);
             }
           }
 
@@ -450,18 +470,32 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
 
   // NOTE: Draft loading removed - now handled via URL parameter (?pattern_id=...)
 
-  // Clear template when format changes (to prevent format mismatch)
+  // Reset form when format changes in "Create New Pattern" mode
   useEffect(() => {
-    // Only clear if template already exists (skip initial mount)
-    if (template && !selectedPatternId) {
-      setTemplate("");
-      setIsValidated(false);
-      setValidationErrors([]);
-      setIsTemplateEditable(false);
-      setError("");
-      setMarkdownError("");
+    if (selectedPatternId) return; // Do not reset when editing existing pattern
+
+    setName("");
+    setTemplate("");
+    setOriginalTemplate("");
+    setJsonSchema("");
+    setInstructions("");
+    setOriginalInstructions("");
+    setIsValidated(false);
+    setValidationErrors([]);
+    setIsTemplateEditable(false);
+    setError("");
+    setSuccess("");
+    setMarkdownError("");
+    setNameAvailable(null);
+
+    if (format === "csv") {
+      setCsvDelimiter("comma");
+      setOriginalCsvDelimiter("comma");
+    } else {
+      // For other formats reset delimiter baseline to avoid stale comparisons
+      setOriginalCsvDelimiter("comma");
     }
-  }, [format]); // Run when format changes
+  }, [format, selectedPatternId]);
 
   useEffect(() => {
     if (format !== "csv") {
@@ -545,14 +579,6 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
       } else {
         setCsvDelimiter("comma");
         setOriginalCsvDelimiter("comma");
-      }
-
-      if (patternData.format === "csv") {
-        const delimiterValue =
-          (patternData.csv_delimiter as "comma" | "semicolon" | undefined) ?? "comma";
-        setCsvDelimiter(delimiterValue);
-      } else {
-        setCsvDelimiter("comma");
       }
 
       // Load the appropriate format-specific schema
@@ -733,13 +759,39 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
       const data = await response.json();
 
       // Clean markdown code blocks from AI response
-      const cleanedTemplate = data.template
+      let cleanedTemplate = data.template
         .replace(/```json\s*/g, '')
         .replace(/```yaml\s*/g, '')
         .replace(/```xml\s*/g, '')
         .replace(/```csv\s*/g, '')
         .replace(/```\s*/g, '')
         .trim();
+
+      // For CSV format, replace spaces in headers with underscores
+      if (format === "csv") {
+        const lines = cleanedTemplate.split('\n');
+        if (lines.length > 0) {
+          // Get the delimiter character
+          const delimChar = getDelimiterChar(csvDelimiter);
+
+          // Process the header line (first non-empty line)
+          const headerIndex = lines.findIndex((line: string) => line.trim().length > 0);
+          if (headerIndex !== -1) {
+            const headerLine = lines[headerIndex];
+
+            // Split by delimiter, replace spaces in each field, rejoin
+            const headers = headerLine.split(delimChar).map((field: string) => {
+              // Replace spaces with underscores in field names
+              return field.trim().replace(/\s+/g, '_');
+            });
+
+            lines[headerIndex] = headers.join(delimChar);
+            cleanedTemplate = lines.join('\n');
+
+            console.log('[Pattern Studio] Auto-sanitized CSV headers, replaced spaces with underscores');
+          }
+        }
+      }
 
       setTemplate(cleanedTemplate);
       setIsTemplateEditable(false);
@@ -901,12 +953,6 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
             `CSV contains ${csvDelimiter === "semicolon" ? "commas (,)" : "semicolons (;)"} but delimiter is set to ${csvDelimiter === "semicolon" ? "semicolon" : "comma"}. Mixed delimiters detected.`
           );
         }
-      } else if (format === "text") {
-        // Plain Text markdown heading validation
-        const validation = validateMarkdownHeadings(template);
-        if (!validation.valid) {
-          throw new Error(validation.error);
-        }
       }
 
       // If we get here, validation succeeded
@@ -1031,6 +1077,29 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
         }
       }
 
+      // Auto-detect CSV delimiter from template for CSV format
+      let detectedDelimiter = csvDelimiter;
+      if (format === "csv" && template) {
+        const cleaned = cleanTemplate(template);
+        const firstLine = cleaned.split('\n')[0] || '';
+        const detected = detectCsvDelimiterChar(firstLine);
+
+        console.log('[Pattern Studio] CSV Delimiter Detection:');
+        console.log('  - Current UI selection:', csvDelimiter);
+        console.log('  - First line of CSV:', firstLine);
+        console.log('  - Detected delimiter char:', detected);
+
+        if (detected === ';') {
+          detectedDelimiter = 'semicolon' as const;
+          console.log('[Pattern Studio] ✅ Auto-detected SEMICOLON delimiter from CSV template');
+        } else if (detected === ',') {
+          detectedDelimiter = 'comma' as const;
+          console.log('[Pattern Studio] ✅ Auto-detected COMMA delimiter from CSV template');
+        } else {
+          console.log('[Pattern Studio] ⚠️ Could not detect delimiter, using UI selection:', csvDelimiter);
+        }
+      }
+
       // CRITICAL: Check if publishing a draft with a parent pattern
       if (parentPatternId) {
         // Publishing a draft → Update PARENT pattern (not the draft itself)
@@ -1039,7 +1108,7 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
 
         const updatePayload = {
           format,
-          csv_delimiter: csvDelimiterValue,
+          csv_delimiter: detectedDelimiter,
           instructions: originalInstructions + (instructions ? `\n\n${instructions}` : ""), // Append follow-up
           ...schemaData, // Spread format-specific schema
           publish_new_version: true, // Increment version on parent
@@ -1085,7 +1154,7 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
         // Update existing pattern (increment version) - normal versioning workflow
         const updatePayload = {
           format,
-          csv_delimiter: csvDelimiterValue,
+          csv_delimiter: detectedDelimiter,
           instructions: originalInstructions + (instructions ? `\n\n${instructions}` : ""), // Append follow-up
           ...schemaData, // Spread format-specific schema
           publish_new_version: true, // Increment version on update
@@ -1115,7 +1184,7 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
         const newPatternSchema: Record<string, unknown> = {
           name,
           format,
-          csv_delimiter: csvDelimiterValue,
+          csv_delimiter: detectedDelimiter,
           instructions: originalInstructions || instructions,
         };
 
@@ -1421,9 +1490,27 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
   };
 
   const jsonToText = (obj: Record<string, unknown>): string => {
-    return Object.entries(obj)
-      .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
-      .join("\n");
+    const lines: string[] = ['# Overview'];
+
+    const formatValue = (value: unknown): string => {
+      if (value === null || value === undefined) return 'Not provided';
+      if (typeof value === 'object') {
+        try {
+          return JSON.stringify(value, null, 2);
+        } catch (error) {
+          return String(value);
+        }
+      }
+      return String(value);
+    };
+
+    Object.entries(obj).forEach(([key, value]) => {
+      lines.push(`## ${key}`);
+      lines.push(formatValue(value));
+      lines.push('');
+    });
+
+    return lines.join('\n').trim();
   };
 
   const getFormatPlaceholder = (): string => {
@@ -1438,7 +1525,7 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
       case "csv":
         return `header1${delimiter}header2${delimiter}header3\nvalue1${delimiter}value2${delimiter}value3`;
       case "text":
-        return 'Plain text output...';
+        return '# Overview\nA short summary of the image context.\n\n## Key Details\n- Detail 1\n- Detail 2\n\n## Observations\nAdd any observations here.';
       default:
         return "";
     }
@@ -1682,7 +1769,7 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
 
             {/* CSV Delimiter Selection */}
             {format === "csv" && (
-              <div>
+              <div key={`delimiter-${csvDelimiter}`}>
                 <label className="block text-sm font-medium mb-2">
                   CSV Delimiter
                 </label>

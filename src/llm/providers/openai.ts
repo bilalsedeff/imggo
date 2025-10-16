@@ -74,7 +74,8 @@ The template should define the structure for extracting data from images.`;
       case "text":
         systemPrompt += `\n\nFor Plain Text:
 - Create a markdown-style structure with headings
-- Use ## for main sections based on instructions
+- The very first line MUST be a single '# ' heading (for example: '# Report Summary')
+- Subsequent sections can use ##, ###, etc.
 - Include realistic placeholder values under each heading
 - Keep it human-readable and well-organized`;
         break;
