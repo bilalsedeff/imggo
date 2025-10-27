@@ -74,8 +74,8 @@ export function LandingDemo() {
     setError(null);
 
     try {
-      // Step 1: Get signed upload URL
-      const urlResponse = await fetch("/api/uploads/signed-url", {
+      // Step 1: Get signed upload URL (demo endpoint, no auth required)
+      const urlResponse = await fetch("/api/demo/signed-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
