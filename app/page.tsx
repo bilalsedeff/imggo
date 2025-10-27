@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+import { LandingDemo } from "@/ui/components/landing-demo";
 
 export default function Home() {
   return (
@@ -8,10 +9,10 @@ export default function Home() {
       <header className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex h-16 items-center justify-between px-8">
           <Link href="/" className="flex items-center -ml-6">
-            <Image 
-              src="/logo.svg" 
-              alt="ImgGo" 
-              width={280} 
+            <Image
+              src="/logo.svg"
+              alt="ImgGo"
+              width={280}
               height={140}
               className="h-16 w-auto"
             />
@@ -26,13 +27,13 @@ export default function Home() {
       </header>
 
       {/* Main Content */}
-      <div className="flex flex-1 flex-col items-center justify-center px-8 pt-16">
-        <main className="text-center w-full max-w-4xl mx-auto">
+      <div className="flex flex-1 flex-col items-center px-8 pt-16">
+        <main className="text-center w-full max-w-4xl mx-auto mt-16">
           <div className="mb-8 flex justify-center">
-            <Image 
-              src="/logo.svg" 
-              alt="ImgGo" 
-              width={400} 
+            <Image
+              src="/logo.svg"
+              alt="ImgGo"
+              width={400}
               height={200}
               className="w-full max-w-md h-auto"
               priority
@@ -80,6 +81,9 @@ export default function Home() {
             </div>
           </div>
         </main>
+
+        {/* Interactive Demo Section */}
+        <LandingDemo />
       </div>
     </div>
   );
