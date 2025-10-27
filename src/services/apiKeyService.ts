@@ -396,7 +396,7 @@ export async function revokeApiKey(
 }
 
 /**
- * Get user's plan limits
+ * Get user's plan limits (from new plans table)
  *
  * @param userId - User ID
  * @returns Rate limit configuration
@@ -410,21 +410,33 @@ export async function getUserPlanLimits(userId: string): Promise<{
   planName: string;
 }> {
   try {
-    const { data, error } = await supabaseServer
+    // Query user_plans with plans table joined
+    const { data: userPlan, error } = await supabaseServer
       .from("user_plans")
-      .select("*")
+      .select(`
+        *,
+        plans!inner(
+          name,
+          requests_per_month,
+          burst_rate_limit_seconds,
+          max_api_keys,
+          max_patterns,
+          max_webhooks
+        )
+      `)
       .eq("user_id", userId)
       .single();
 
-    if (error || !data) {
+    if (error || !userPlan) {
       // Default to free plan if not found
       logger.warn("User plan not found, using free tier defaults", {
         user_id: userId,
+        error: error?.message,
       });
 
       return {
-        rateLimitRequests: 100,
-        rateLimitWindowSeconds: 600,
+        rateLimitRequests: 50,  // 50 requests per month for free
+        rateLimitWindowSeconds: 2592000,  // 30 days in seconds (monthly window)
         maxApiKeys: 2,
         maxPatterns: 5,
         maxWebhooks: 3,
@@ -432,13 +444,22 @@ export async function getUserPlanLimits(userId: string): Promise<{
       };
     }
 
+    const plan = userPlan.plans as {
+      name: string;
+      requests_per_month: number;
+      burst_rate_limit_seconds: number | null;
+      max_api_keys: number;
+      max_patterns: number;
+      max_webhooks: number;
+    };
+
     return {
-      rateLimitRequests: data.rate_limit_requests,
-      rateLimitWindowSeconds: data.rate_limit_window_seconds,
-      maxApiKeys: data.max_api_keys,
-      maxPatterns: data.max_patterns,
-      maxWebhooks: data.max_webhooks,
-      planName: data.plan_name,
+      rateLimitRequests: plan.requests_per_month,
+      rateLimitWindowSeconds: 2592000,  // Monthly billing cycle (30 days)
+      maxApiKeys: plan.max_api_keys,
+      maxPatterns: plan.max_patterns,
+      maxWebhooks: plan.max_webhooks,
+      planName: plan.name,
     };
   } catch (error) {
     logger.error("Exception getting user plan limits", {
