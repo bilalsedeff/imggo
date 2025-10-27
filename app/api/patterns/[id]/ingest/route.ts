@@ -217,6 +217,42 @@ export const POST = withErrorHandling(
       extras: extras,
     });
 
+    // ⚡ INSTANT: Trigger worker immediately (non-blocking, cron is backup)
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (supabaseUrl && serviceRoleKey) {
+      logger.info("⚡ Triggering worker immediately (non-blocking)", {
+        job_id: jobId,
+        worker_url: `${supabaseUrl}/functions/v1/worker`,
+      });
+
+      fetch(`${supabaseUrl}/functions/v1/worker`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${serviceRoleKey}`,
+          "Content-Type": "application/json",
+        },
+        body: "{}",
+      })
+        .then(() => {
+          logger.info("⚡ Worker triggered successfully", { job_id: jobId });
+        })
+        .catch((error) => {
+          // Log but don't block - cron will pick it up within 5 seconds
+          logger.warn("Immediate worker trigger failed, cron will handle", {
+            job_id: jobId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+    } else {
+      logger.warn("Cannot trigger worker immediately - missing env variables", {
+        job_id: jobId,
+        has_url: !!supabaseUrl,
+        has_key: !!serviceRoleKey,
+      });
+    }
+
     // Return 202 - client should poll
     const response = successResponse(
       {

@@ -40,7 +40,7 @@ export function Navbar() {
       <div className="max-w-7xl mx-auto flex h-16 items-center justify-between px-8">
         <Link href="/dashboard" className="flex items-center hover:opacity-80 transition -ml-6">
           <Image 
-            src="/logo.svg" 
+            src={theme === "dark" ? "/white/logo.svg" : "/logo.svg"}
             alt="ImgGo" 
             width={280} 
             height={140}
