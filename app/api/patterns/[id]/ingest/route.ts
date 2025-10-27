@@ -204,180 +204,35 @@ export const POST = withErrorHandling(
       extras: extras,
     });
 
-    logger.info("Job created, attempting direct processing", {
+    logger.info("Job created, enqueuing for worker processing", {
       job_id: jobId,
       pattern_id: pattern.id,
     });
 
-    const manifestFormat = pattern.format as ManifestFormat;
-    const csvDelimiter = pattern.csv_delimiter as "comma" | "semicolon" | undefined;
-    const csvSchema = pattern.csv_schema || undefined;
+    // 🚀 QUEUE-FIRST: All jobs processed by Supabase worker (reliable, uses Supabase secrets)
+    await jobService.enqueueExistingJob(jobId, {
+      job_id: jobId,
+      pattern_id: pattern.id,
+      image_url: imageUrl,
+      extras: extras,
+    });
 
-    // 🚀 HYBRID APPROACH: Try direct processing first (25s timeout)
-    try {
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("PROCESSING_TIMEOUT")), 25000)
-      );
+    // Return 202 - client should poll
+    const response = successResponse(
+      {
+        job_id: jobId,
+        status: "queued",
+        message: "Job queued for background processing",
+        approach: "queued",
+      },
+      202
+    );
 
-      const processingPromise = processImage({
-        jobId,
-        patternId: pattern.id,
-        imageUrl: imageUrl,
-        userId: authContext.userId,
-      });
+    // Add rate limit headers
+    Object.entries(rateLimitHeaders).forEach(([key, value]) => {
+      response.headers.set(key, value);
+    });
 
-      const result = await Promise.race([processingPromise, timeoutPromise]);
-
-      if (result.success && result.manifest) {
-        // ⚡ SUCCESS! Return instant response (90% of cases)
-        logger.info("Direct processing succeeded", {
-          job_id: jobId,
-          latency_ms: result.latencyMs,
-          approach: "direct",
-          format: pattern.format,
-        });
-
-        if (manifestFormat !== "json") {
-          const convertedManifest = convertManifest(
-            result.manifest,
-            manifestFormat,
-            csvDelimiter,
-            csvSchema
-          );
-          const response = new NextResponse(convertedManifest, {
-            status: 200,
-          });
-          response.headers.set("Content-Type", getContentType(manifestFormat));
-          response.headers.set("X-Job-Id", jobId);
-          response.headers.set("X-Latency-Ms", String(result.latencyMs));
-          response.headers.set("X-Approach", "direct");
-          Object.entries(rateLimitHeaders).forEach(([key, value]) => {
-            response.headers.set(key, value);
-          });
-          if (uploadedFilePath) {
-            await deleteFile(uploadedFilePath).catch((error) => {
-              logger.warn("Failed to delete uploaded file after direct success", {
-                path: uploadedFilePath,
-                job_id: jobId,
-                error: error instanceof Error ? error.message : String(error),
-              });
-            });
-          }
-          return response;
-        }
-
-        // For JSON, return structured response
-        const response = successResponse(
-          {
-            job_id: jobId,
-            status: "succeeded",
-            manifest: result.manifest,
-            latency_ms: result.latencyMs,
-            approach: "direct", // Indicate this was processed instantly
-          },
-          200 // 200 OK - instant response!
-        );
-
-        // Add rate limit headers
-        Object.entries(rateLimitHeaders).forEach(([key, value]) => {
-          response.headers.set(key, value);
-        });
-
-        if (uploadedFilePath) {
-          await deleteFile(uploadedFilePath).catch((error) => {
-            logger.warn("Failed to delete uploaded file after direct success", {
-              path: uploadedFilePath,
-              job_id: jobId,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          });
-        }
-
-        return response;
-      } else {
-        throw new Error(result.error || "Processing failed");
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : "Unknown error";
-      const isTimeout = errorMsg === "PROCESSING_TIMEOUT";
-
-      // 🔀 SMART RETRY STRATEGY:
-      // 1. TIMEOUT → Always retry in queue (needs more time)
-      // 2. TRANSIENT ERROR → Retry with exponential backoff (network glitches)
-      // 3. PERMANENT ERROR → Return error immediately (invalid schema, etc.)
-
-      const isRetryable = isTimeout || isTransientError(errorMsg);
-
-      if (isRetryable) {
-        // ⏱️ RETRYABLE: Enqueue to PGMQ for worker retry
-        logger.warn("Direct processing failed with retryable error", {
-          job_id: jobId,
-          reason: isTimeout ? "timeout" : "transient_error",
-          error: errorMsg,
-          retry_strategy: "queue_fallback",
-        });
-
-        // Reset job status to 'queued' for worker retry
-        // Job's retry_count will be incremented by worker
-        await jobService.resetJobToQueued(jobId);
-
-        // Enqueue job for background processing
-        await jobService.enqueueExistingJob(jobId, {
-          job_id: jobId,
-          pattern_id: pattern.id,
-          image_url: imageUrl,
-          extras: extras,
-        });
-
-        // Return 202 - client should poll
-        const response = successResponse(
-          {
-            job_id: jobId,
-            status: "queued",
-            message: "Job queued for background processing",
-            approach: "queued",
-            reason: isTimeout
-              ? "Processing timeout, moved to queue for retry"
-              : "Transient error, moved to queue for retry",
-          },
-          202
-        );
-
-        // Add rate limit headers
-        Object.entries(rateLimitHeaders).forEach(([key, value]) => {
-          response.headers.set(key, value);
-        });
-
-        return response;
-      } else {
-        // ❌ PERMANENT ERROR: Job already marked as failed, do not retry
-        logger.error("Direct processing failed with permanent error", {
-          job_id: jobId,
-          error: errorMsg,
-          error_category: "permanent",
-          note: "Job status set to 'failed', will not retry",
-        });
-
-        // Return 200 with failed status and error details
-        const response = successResponse(
-          {
-            job_id: jobId,
-            status: "failed",
-            error: errorMsg,
-            message: "Processing failed permanently",
-            approach: "direct",
-            retryable: false,
-          },
-          200 // 200 OK but with failed status
-        );
-
-        // Add rate limit headers
-        Object.entries(rateLimitHeaders).forEach(([key, value]) => {
-          response.headers.set(key, value);
-        });
-
-        return response;
-      }
-    }
+    return response;
   }
 );

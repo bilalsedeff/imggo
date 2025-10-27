@@ -150,7 +150,7 @@ function convertToCSV(
 
       const parser = new Parser({
         fields,
-        header: false, // Don't include header row in response (header defined in pattern schema)
+        header: true, // Include header row for standard CSV format
         delimiter,
       });
 

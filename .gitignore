@@ -79,3 +79,5 @@ MULTIPLE_DRAFTS_IMPLEMENTATION.md
 SETUP_PGMQ_FIX.md
 package-lock.json
 */package-lock.json
+load-test-results/
+major-test/

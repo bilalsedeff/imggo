@@ -14,6 +14,7 @@ import * as jobService from "@/services/jobService";
 import * as patternService from "@/services/patternService";
 import { convertManifest, getContentType, ManifestFormat } from "@/lib/formatConverter";
 import { logger } from "@/lib/logger";
+import { reorderManifestKeys, createStructuredOutputSchema } from "@/lib/manifestKeyOrdering";
 
 export const GET = withErrorHandling(
   async (
@@ -44,9 +45,60 @@ export const GET = withErrorHandling(
     }
 
     // Check if format parameter is provided in query string
+    // Default to JSON for REST API compliance (status polling)
+    // Users can explicitly request other formats with ?format=yaml|xml|csv|text
     const url = new URL(request.url);
     const formatParam = url.searchParams.get("format") as ManifestFormat | null;
-    const desiredFormat = (formatParam || pattern.format) as ManifestFormat;
+    const desiredFormat = (formatParam || "json") as ManifestFormat;
+
+    // 🎯 DIVINE RULE: Reorder manifest keys to match user's schema order
+    // PostgreSQL JSONB doesn't preserve key order, so we reorder on read
+    if (job.manifest && job.status === "succeeded") {
+      if (pattern.format === "json" && pattern.json_schema) {
+        const schema = createStructuredOutputSchema(pattern.json_schema as Record<string, unknown>);
+        job.manifest = reorderManifestKeys(job.manifest, schema);
+
+        logger.debug("JSON manifest keys reordered to match schema", {
+          job_id: id,
+          schema_required: schema.required,
+          manifest_keys: Object.keys(job.manifest as Record<string, unknown>),
+        });
+      } else if (pattern.format === "csv" && pattern.csv_schema) {
+        // Reorder CSV rows to match header order from schema
+        const firstLine = (pattern.csv_schema as string).split('\n')[0];
+        const delimiter = pattern.csv_delimiter === "semicolon" ? ";" : ",";
+        const expectedHeaders = firstLine.split(delimiter).map(h => h.trim());
+
+        const manifest = job.manifest as Record<string, unknown>;
+        const rows = manifest.rows as Record<string, unknown>[] | undefined;
+
+        if (rows && rows.length > 0) {
+          const reorderedRows = rows.map(row => {
+            const reordered: Record<string, unknown> = {};
+            for (const header of expectedHeaders) {
+              if (header in row) {
+                reordered[header] = row[header];
+              }
+            }
+            // Add any remaining keys
+            for (const key in row) {
+              if (!(key in reordered)) {
+                reordered[key] = row[key];
+              }
+            }
+            return reordered;
+          });
+
+          job.manifest = { ...manifest, rows: reorderedRows };
+
+          logger.debug("CSV manifest rows reordered to match headers", {
+            job_id: id,
+            expected_headers: expectedHeaders,
+            actual_headers: Object.keys(reorderedRows[0] || {}),
+          });
+        }
+      }
+    }
 
     // Clean up manifest before returning - remove internal fields
     if (job.manifest && job.status === "succeeded") {
@@ -75,22 +127,23 @@ export const GET = withErrorHandling(
             },
           });
         } else {
-          // For JSON, parse the _raw content if it's YAML/XML/CSV/TEXT that was stored as _raw
-          // Otherwise return the manifest without internal fields
-          const cleanManifest = { ...manifest };
-          delete cleanManifest._raw;
-          delete cleanManifest._format;
+          // For JSON format request on non-JSON patterns:
+          // Keep _raw and _format fields in the response so clients can parse if needed
+          // Don't remove them as they're the primary data for these formats
 
-          // If the clean manifest is empty after removing internal fields,
-          // it means we only had _raw content, which shouldn't happen for JSON
-          if (Object.keys(cleanManifest).length === 0) {
-            logger.warn("JSON pattern returned _raw format only", {
-              job_id: id,
-              format: manifest._format
-            });
+          // Only clean up _raw/_format if there's actual structured data
+          const hasStructuredData = Object.keys(manifest).some(
+            key => key !== '_raw' && key !== '_format'
+          );
+
+          if (hasStructuredData) {
+            // Has both structured + _raw, remove _raw for JSON response
+            const cleanManifest = { ...manifest };
+            delete cleanManifest._raw;
+            delete cleanManifest._format;
+            job.manifest = cleanManifest;
           }
-
-          job.manifest = cleanManifest;
+          // else: Keep _raw/_format as they're the only data (YAML/XML/CSV/TEXT patterns)
         }
       } else if (desiredFormat !== "json") {
         // Convert properly structured manifest to desired format
