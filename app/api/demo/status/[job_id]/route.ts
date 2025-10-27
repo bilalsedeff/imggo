@@ -9,14 +9,14 @@ import { supabaseServer } from "@/lib/supabase-server";
 import { logger } from "@/lib/logger";
 
 interface RouteParams {
-  params: {
+  params: Promise<{
     job_id: string;
-  };
+  }>;
 }
 
 export async function GET(_request: NextRequest, { params }: RouteParams) {
   try {
-    const { job_id } = params;
+    const { job_id } = await params;
 
     if (!job_id) {
       return NextResponse.json(

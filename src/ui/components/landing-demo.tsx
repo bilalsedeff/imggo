@@ -74,12 +74,17 @@ export function LandingDemo() {
     setError(null);
 
     try {
+      // Define paths and URLs
+      const BUCKET = process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET || "images";
+      const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+      const imagePath = `demo/${Date.now()}-${uploadedFile.name}`;
+
       // Step 1: Get signed upload URL (demo endpoint, no auth required)
       const urlResponse = await fetch("/api/demo/signed-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          path: `demo/${Date.now()}-${uploadedFile.name}`,
+          path: imagePath,
         }),
       });
 
@@ -103,8 +108,8 @@ export function LandingDemo() {
         throw new Error("Failed to upload image");
       }
 
-      // Extract image URL from upload URL (remove query params)
-      const imageUrl = uploadUrl?.split("?")?.[0] || uploadUrl;
+      // Build public URL from bucket and path (for worker to download)
+      const imageUrl = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${imagePath}`;
 
       // Step 3: Process with demo endpoint (privileged, no rate limit)
       setState("processing");
