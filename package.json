@@ -19,7 +19,8 @@
     "supabase:status": "supabase status",
     "edge:serve": "supabase functions serve",
     "edge:deploy": "supabase functions deploy worker",
-    "test-job": "tsx scripts/create-test-job-direct.ts"
+    "test-job": "tsx scripts/create-test-job-direct.ts",
+    "test-demo": "tsx scripts/test-demo.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
