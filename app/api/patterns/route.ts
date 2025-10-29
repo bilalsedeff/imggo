@@ -11,10 +11,12 @@ import {
   parseBody,
   parseQuery,
   successResponse,
+  ApiError,
 } from "@/lib/api-helpers";
 import { CreatePatternSchema } from "@/schemas/pattern";
 import { ListPatternsQuerySchema } from "@/schemas/api";
 import * as patternService from "@/services/patternService";
+import { getUserPlan } from "@/services/planService";
 import { logger } from "@/lib/logger";
 import { checkRateLimitOrFail } from "@/middleware/rateLimit";
 import OpenAI from "openai";
@@ -248,6 +250,54 @@ Respond ONLY with the JSON Schema.`,
       });
       // Continue without format-specific schema
     }
+  }
+
+  // Validate template character limit against user's plan
+  const userPlan = await getUserPlan(user.userId);
+  const maxTemplateChars = userPlan.plan.max_template_characters;
+
+  // Calculate template length based on format
+  let templateLength = 0;
+  switch (input.format) {
+    case "json":
+      templateLength = input.json_schema ? JSON.stringify(input.json_schema).length : 0;
+      break;
+    case "yaml":
+      templateLength = input.yaml_schema?.length || 0;
+      break;
+    case "xml":
+      templateLength = input.xml_schema?.length || 0;
+      break;
+    case "csv":
+      templateLength = input.csv_schema?.length || 0;
+      break;
+    case "text":
+      templateLength = input.plain_text_schema?.length || 0;
+      break;
+  }
+
+  logger.info("Validating template character limit", {
+    user_id: user.userId,
+    pattern_name: input.name,
+    format: input.format,
+    template_length: templateLength,
+    max_template_chars: maxTemplateChars,
+    plan: userPlan.plan.name,
+  });
+
+  if (templateLength > maxTemplateChars) {
+    logger.warn("Template exceeds plan character limit", {
+      user_id: user.userId,
+      pattern_name: input.name,
+      template_length: templateLength,
+      max_template_chars: maxTemplateChars,
+      plan: userPlan.plan.name,
+    });
+    throw new ApiError(
+      `Template exceeds your plan limit of ${maxTemplateChars.toLocaleString()} characters. Your template is ${templateLength.toLocaleString()} characters. Please reduce the template size or upgrade your plan.`,
+      400,
+      "TEMPLATE_TOO_LARGE"
+    );
   }
 
   // The input is already transformed by Zod, so it has the correct type

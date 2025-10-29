@@ -839,7 +839,8 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
         setOriginalInstructions(instructions);
         setInstructions("");
       } else {
-        // Follow-up ise: sadece instructions'ı temizle (original'ı koru)
+        // Follow-up ise: originalInstructions'a follow-up'ı ekle ve instructions'ı temizle
+        setOriginalInstructions(originalInstructions + ", " + instructions);
         setInstructions("");
       }
     } catch (err) {
