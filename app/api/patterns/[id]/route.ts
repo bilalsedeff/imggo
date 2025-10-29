@@ -15,6 +15,7 @@ import {
 } from "@/lib/api-helpers";
 import { UpdatePatternSchema } from "@/schemas/pattern";
 import * as patternService from "@/services/patternService";
+import { getUserPlan } from "@/services/planService";
 import { logger } from "@/lib/logger";
 
 const BASE_URL = process.env.APP_BASE_URL || "http://localhost:3000";
@@ -98,6 +99,54 @@ export const PATCH = withErrorHandling(
         schemas.csv_delimiter = input.csv_delimiter || 'comma';
       } else if (input.format === "text") {
         schemas.plain_text_schema = input.plain_text_schema || null;
+      }
+
+      // Validate template character limit against user's plan
+      const userPlan = await getUserPlan(user.userId);
+      const maxTemplateChars = userPlan.plan.max_template_characters;
+
+      // Calculate template length based on format
+      let templateLength = 0;
+      switch (input.format) {
+        case "json":
+          templateLength = schemas.json_schema ? JSON.stringify(schemas.json_schema).length : 0;
+          break;
+        case "yaml":
+          templateLength = schemas.yaml_schema?.length || 0;
+          break;
+        case "xml":
+          templateLength = schemas.xml_schema?.length || 0;
+          break;
+        case "csv":
+          templateLength = schemas.csv_schema?.length || 0;
+          break;
+        case "text":
+          templateLength = schemas.plain_text_schema?.length || 0;
+          break;
+      }
+
+      logger.info("Validating template character limit (update)", {
+        pattern_id: id,
+        user_id: user.userId,
+        format: input.format,
+        template_length: templateLength,
+        max_template_chars: maxTemplateChars,
+        plan: userPlan.plan.name,
+      });
+
+      if (templateLength > maxTemplateChars) {
+        logger.warn("Template exceeds plan character limit (update)", {
+          pattern_id: id,
+          user_id: user.userId,
+          template_length: templateLength,
+          max_template_chars: maxTemplateChars,
+          plan: userPlan.plan.name,
+        });
+        throw new ApiError(
+          `Template exceeds your plan limit of ${maxTemplateChars.toLocaleString()} characters. Your template is ${templateLength.toLocaleString()} characters. Please reduce the template size or upgrade your plan.`,
+          400,
+          "TEMPLATE_TOO_LARGE"
+        );
       }
 
       newVersion = await patternService.publishPatternVersion(

@@ -722,6 +722,7 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
     name.trim() &&
     nameAvailable !== false &&
     template &&
+    template.length <= userPlanLimit && // Check template doesn't exceed plan limit
     (!isTemplateEditable || isValidated) &&
     hasChanges &&
     (
@@ -2184,6 +2185,8 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
                     ? `• Instructions too short (${instructions.length}/30)`
                     : !template
                     ? "• Generate a template first"
+                    : template.length > userPlanLimit
+                    ? `• Template exceeds plan limit (${template.length.toLocaleString()} / ${userPlanLimit.toLocaleString()} chars)`
                     : needsValidation && !isValidated
                     ? "• Validate your template"
                     : ""}
