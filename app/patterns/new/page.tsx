@@ -267,7 +267,7 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
 
         if (response.ok) {
           const data = await response.json();
-          const maxChars = parseInt(data.limits.maxCharactersPerRequest.replace(/,/g, "")) || PATTERN_LIMITS.SCHEMA_MAX;
+          const maxChars = parseInt(data.limits.maxTemplateCharacters.replace(/,/g, "")) || PATTERN_LIMITS.SCHEMA_MAX;
           setUserPlanLimit(maxChars);
         } else {
           setUserPlanLimit(PATTERN_LIMITS.SCHEMA_MAX); // Fallback on error
