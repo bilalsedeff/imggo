@@ -15,6 +15,8 @@ import {
   Loader2,
   Search,
   Activity,
+  ArrowUpRight,
+  X,
 } from "lucide-react";
 
 interface Metrics {
@@ -45,6 +47,25 @@ interface PatternStat {
   last_job_at: string;
 }
 
+interface UserUsage {
+  plan: {
+    name: string;
+    displayName: string;
+  };
+  usage: {
+    requests: {
+      used: number;
+      limit: number | string;
+      remaining: number | string;
+      percentUsed: number;
+    };
+    burstLimit: {
+      seconds: number;
+      description: string;
+    } | null;
+  };
+}
+
 export default function DashboardPage() {
   const { session } = useAuth();
   const [metrics, setMetrics] = useState<Metrics | null>(null);
@@ -54,6 +75,9 @@ export default function DashboardPage() {
   const [isLoadingStats, setIsLoadingStats] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [successRateTimeRange, setSuccessRateTimeRange] = useState<"24h" | "all">("all");
+  const [userUsage, setUserUsage] = useState<UserUsage | null>(null);
+  const [showUsageWarning, setShowUsageWarning] = useState(true);
+  const [showBurstLimitBanner, setShowBurstLimitBanner] = useState(true);
 
   useEffect(() => {
     if (!session?.access_token) return;
@@ -115,9 +139,27 @@ export default function DashboardPage() {
       }
     };
 
+    const fetchUserUsage = async () => {
+      try {
+        const response = await fetch("/api/user/usage", {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setUserUsage(data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch user usage:", err);
+      }
+    };
+
     fetchMetrics();
     fetchActivePatterns();
     fetchPatternStats();
+    fetchUserUsage();
   }, [session]);
 
   // Success rate color: green at 100%, transitions to red as it decreases
@@ -161,6 +203,109 @@ export default function DashboardPage() {
           <div className="mb-8">
             <h1 className="text-3xl font-bold">Dashboard</h1>
           </div>
+
+          {/* Usage Warnings */}
+          {userUsage && (
+            <>
+              {/* Burst Limit Banner (Free plan only) */}
+              {userUsage.plan.name === "free" && userUsage.usage.burstLimit && showBurstLimitBanner && (
+                <div className="mb-6 p-4 border border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950/20 rounded-lg">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-3 flex-1">
+                      <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold text-yellow-900 dark:text-yellow-100 mb-1">
+                          Free Plan: 1 Request per Minute Limit
+                        </p>
+                        <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                          You're currently limited to {userUsage.usage.burstLimit.description}. Upgrade to Starter or higher to remove all burst limits and process requests as fast as you need.
+                        </p>
+                        <Link
+                          href="/pricing"
+                          className="inline-flex items-center gap-1 mt-2 text-sm font-medium text-yellow-900 dark:text-yellow-100 hover:underline"
+                        >
+                          View upgrade options
+                          <ArrowUpRight className="w-3 h-3" />
+                        </Link>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setShowBurstLimitBanner(false)}
+                      className="text-yellow-600 hover:text-yellow-700 dark:hover:text-yellow-500"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Usage Warning (70%+ used) */}
+              {typeof userUsage.usage.requests.limit === "number" &&
+                userUsage.usage.requests.percentUsed >= 70 &&
+                showUsageWarning && (
+                <div className={`mb-6 p-4 border rounded-lg ${
+                  userUsage.usage.requests.percentUsed >= 90
+                    ? "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/20"
+                    : "border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950/20"
+                }`}>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-3 flex-1">
+                      <AlertCircle className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+                        userUsage.usage.requests.percentUsed >= 90
+                          ? "text-red-600"
+                          : "text-yellow-600"
+                      }`} />
+                      <div className="flex-1">
+                        <p className={`font-semibold mb-1 ${
+                          userUsage.usage.requests.percentUsed >= 90
+                            ? "text-red-900 dark:text-red-100"
+                            : "text-yellow-900 dark:text-yellow-100"
+                        }`}>
+                          {userUsage.usage.requests.percentUsed >= 90
+                            ? "Almost Out of Requests!"
+                            : "Approaching Your Request Limit"}
+                        </p>
+                        <p className={`text-sm ${
+                          userUsage.usage.requests.percentUsed >= 90
+                            ? "text-red-700 dark:text-red-300"
+                            : "text-yellow-700 dark:text-yellow-300"
+                        }`}>
+                          You've used {userUsage.usage.requests.used} of {userUsage.usage.requests.limit} requests this month
+                          ({userUsage.usage.requests.percentUsed.toFixed(0)}%).
+                          {userUsage.usage.requests.percentUsed >= 90
+                            ? " Upgrade now to avoid service interruption."
+                            : " Consider upgrading to avoid hitting your limit."}
+                        </p>
+                        <div className="flex items-center gap-3 mt-3">
+                          <Link
+                            href="/pricing"
+                            className="inline-flex items-center gap-1 text-sm font-medium hover:underline"
+                          >
+                            Upgrade Plan
+                            <ArrowUpRight className="w-3 h-3" />
+                          </Link>
+                          <Link
+                            href="/settings/billing"
+                            className="text-sm text-muted-foreground hover:underline"
+                          >
+                            View Usage Details
+                          </Link>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setShowUsageWarning(false)}
+                      className={userUsage.usage.requests.percentUsed >= 90
+                        ? "text-red-600 hover:text-red-700 dark:hover:text-red-500"
+                        : "text-yellow-600 hover:text-yellow-700 dark:hover:text-yellow-500"}
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
 
           {/* Metrics Cards */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">

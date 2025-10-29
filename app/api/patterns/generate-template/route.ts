@@ -2,11 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateTemplate } from "@/llm/providers/openai";
 import { logger } from "@/lib/logger";
 import { requireAuth } from "@/lib/api-helpers";
+import { getUserPlan } from "@/services/planService";
 
 export async function POST(request: NextRequest) {
   try {
     // Require authentication
     const user = await requireAuth(request);
+
+    // Get user's plan to check template character limits
+    const userPlan = await getUserPlan(user.userId);
+    const maxTemplateChars = userPlan.plan.max_template_characters;
 
     const body = await request.json();
     const {
@@ -30,6 +35,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate input size against plan limits
+    const instructionsLength = instructions?.length || 0;
+    const schemaLength = jsonSchema ? JSON.stringify(jsonSchema).length : 0;
+    const totalInputSize = instructionsLength + schemaLength;
+
+    if (totalInputSize > maxTemplateChars) {
+      return NextResponse.json(
+        {
+          error: `Template size (${totalInputSize.toLocaleString()} characters) exceeds your plan limit of ${maxTemplateChars.toLocaleString()} characters. Please shorten your instructions or schema, or upgrade your plan.`,
+          planLimit: maxTemplateChars,
+          currentSize: totalInputSize,
+        },
+        { status: 400 }
+      );
+    }
+
     let promptToUse: string;
 
     if (isFollowUp) {
@@ -45,6 +66,7 @@ export async function POST(request: NextRequest) {
         user_id: user.userId,
         format,
         followUpLength: follow_up_prompt.length,
+        maxTemplateChars,
       });
 
       // Construct enhanced prompt for follow-up
@@ -57,7 +79,7 @@ ${current_template}
 Follow-up Request:
 ${follow_up_prompt}
 
-Please modify the current template according to the follow-up request while maintaining the original intent from the original instructions. Return the complete updated template in ${format} format.`;
+Please modify the current template according to the follow-up request while maintaining the original intent from the original instructions. Return the complete updated template in ${format} format. IMPORTANT: The output must not exceed ${maxTemplateChars} characters.`;
     } else {
       // Initial request
       if (!instructions || typeof instructions !== "string") {
@@ -72,12 +94,13 @@ Please modify the current template according to the follow-up request while main
         format,
         instructionsLength: instructions.length,
         hasName: Boolean(name),
+        maxTemplateChars,
       });
 
       // Include pattern name in prompt if provided
       promptToUse = name && name.trim()
-        ? `Pattern Name: ${name}\n\nInstructions: ${instructions}`
-        : instructions;
+        ? `Pattern Name: ${name}\n\nInstructions: ${instructions}\n\nIMPORTANT: Generate a template that does not exceed ${maxTemplateChars} characters.`
+        : `${instructions}\n\nIMPORTANT: Generate a template that does not exceed ${maxTemplateChars} characters.`;
     }
 
     // Call OpenAI to generate template

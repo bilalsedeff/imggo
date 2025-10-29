@@ -24,7 +24,8 @@ export interface Plan {
   requests_per_month: number;  // -1 = unlimited
   burst_rate_limit_seconds: number | null;
   max_image_size_mb: number;
-  max_tokens_per_request: number;
+  max_characters_per_request: number;
+  max_template_characters: number;  // Same as max_characters_per_request (not a separate limit)
   max_api_keys: number;  // -1 = unlimited
   max_patterns: number;  // -1 = unlimited
   max_webhooks: number;  // -1 = unlimited
@@ -300,7 +301,7 @@ export async function checkFairUseLimits(
 
     const imageSizeMB = imageSizeBytes / (1024 * 1024);
     const maxImageSizeMB = plan.max_image_size_mb;
-    const maxTokens = plan.max_tokens_per_request;
+    const maxTokens = plan.max_characters_per_request;
 
     // Check image size
     if (imageSizeMB > maxImageSizeMB) {

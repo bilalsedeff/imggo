@@ -153,13 +153,20 @@ export function LandingDemo() {
           if (pattern?.format === "json") {
             formattedResult = JSON.stringify(manifest, null, 2);
           } else if (pattern?.format === "yaml") {
-            formattedResult = manifest;
+            // Extract _raw field for non-JSON formats
+            formattedResult = manifest._raw || JSON.stringify(manifest, null, 2);
           } else if (pattern?.format === "xml") {
-            formattedResult = manifest;
+            // Extract _raw field for non-JSON formats
+            formattedResult = manifest._raw || JSON.stringify(manifest, null, 2);
           } else if (pattern?.format === "csv") {
-            formattedResult = manifest;
+            // CSV might be in rows or _raw
+            formattedResult = manifest._raw || JSON.stringify(manifest, null, 2);
+          } else if (pattern?.format === "text") {
+            // Text format might be in .text or ._raw
+            formattedResult = manifest.text || manifest._raw || JSON.stringify(manifest, null, 2);
           } else {
-            formattedResult = manifest;
+            // Fallback: stringify any object
+            formattedResult = JSON.stringify(manifest, null, 2);
           }
 
           setResult(formattedResult);

@@ -79,6 +79,16 @@ export function Navbar() {
           >
             Logs
           </Link>
+          <Link
+            href="/pricing"
+            className={`text-sm font-medium transition px-3 py-1.5 rounded-md ${
+              pathname === "/pricing"
+                ? "text-foreground bg-accent/50 shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Pricing
+          </Link>
 
           {/* Profile Dropdown */}
           {session && (

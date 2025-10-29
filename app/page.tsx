@@ -17,12 +17,20 @@ export default function Home() {
               className="h-16 w-auto"
             />
           </Link>
-          <Link
-            href="/auth/signin"
-            className="px-4 py-2 text-sm font-medium border border-border rounded-lg hover:bg-accent transition"
-          >
-            Sign In
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link
+              href="/pricing"
+              className="text-sm font-medium text-muted-foreground hover:text-foreground transition"
+            >
+              Pricing
+            </Link>
+            <Link
+              href="/auth/signin"
+              className="px-4 py-2 text-sm font-medium border border-border rounded-lg hover:bg-accent transition"
+            >
+              Sign In
+            </Link>
+          </div>
         </div>
       </header>
 

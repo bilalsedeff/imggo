@@ -85,9 +85,8 @@ export default function AuthPage() {
 
         if (error) throw error;
 
-        // Redirect on success
-        router.push(redirectTo);
-        router.refresh();
+        // Redirect on success (use window.location for guaranteed session update)
+        window.location.href = redirectTo;
       }
     } catch (err) {
       console.error("Auth error:", err);

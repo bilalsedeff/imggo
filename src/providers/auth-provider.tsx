@@ -60,11 +60,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       setSession(null);
       setUser(null);
-      router.push("/");
-      router.refresh();
+      // Use window.location for guaranteed redirect
+      window.location.href = "/";
     } catch (error) {
       console.error("Failed to sign out", error);
-    } finally {
       setLoading(false);
     }
   };

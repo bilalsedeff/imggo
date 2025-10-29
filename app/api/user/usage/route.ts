@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
       },
       limits: {
         maxImageSize: `${userPlan.plan.max_image_size_mb}MB`,
-        maxTokensPerRequest: userPlan.plan.max_tokens_per_request.toLocaleString(),
+        maxCharactersPerRequest: userPlan.plan.max_characters_per_request.toLocaleString(),
         maxApiKeys:
           userPlan.plan.max_api_keys === -1
             ? "Unlimited"
