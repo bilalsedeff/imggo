@@ -57,6 +57,10 @@ export default function NewPatternPage() {
   const searchParams = useSearchParams();
   const { session } = useAuth();
 
+  // User plan limits
+  const [userPlanLimit, setUserPlanLimit] = useState<number>(PATTERN_LIMITS.SCHEMA_MAX); // Default to hardcoded limit
+  const [isLoadingPlanLimit, setIsLoadingPlanLimit] = useState(false);
+
   // Pattern selection
   const [selectedPatternId, setSelectedPatternId] = useState<string | null>(null);
   const [parentPatternId, setParentPatternId] = useState<string | null>(null); // Track parent for draft versioning
@@ -246,6 +250,38 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
     }
     return undefined;
   }, [showMenu]);
+
+  // Fetch user plan limit on mount
+  useEffect(() => {
+    if (!session?.access_token) {
+      setUserPlanLimit(PATTERN_LIMITS.SCHEMA_MAX); // Default for non-authenticated users
+      return;
+    }
+
+    const fetchUserPlanLimit = async () => {
+      setIsLoadingPlanLimit(true);
+      try {
+        const response = await fetch("/api/user/usage", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const maxChars = parseInt(data.limits.maxCharactersPerRequest.replace(/,/g, "")) || PATTERN_LIMITS.SCHEMA_MAX;
+          setUserPlanLimit(maxChars);
+        } else {
+          setUserPlanLimit(PATTERN_LIMITS.SCHEMA_MAX); // Fallback on error
+        }
+      } catch (error) {
+        console.error("Failed to fetch user plan limit:", error);
+        setUserPlanLimit(PATTERN_LIMITS.SCHEMA_MAX); // Fallback on error
+      } finally {
+        setIsLoadingPlanLimit(false);
+      }
+    };
+
+    fetchUserPlanLimit();
+  }, [session]);
 
   // Load active patterns on mount
   useEffect(() => {
@@ -1944,20 +1980,20 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
                 }
                 rows={8}
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-background resize-none font-mono text-sm ${
-                  jsonSchema.length > PATTERN_LIMITS.SCHEMA_MAX
+                  jsonSchema.length > userPlanLimit
                     ? "border-destructive"
                     : "border-border"
                 }`}
               />
               <div className="flex items-center justify-end mt-1">
                 <span className={`text-xs ${
-                  jsonSchema.length > PATTERN_LIMITS.SCHEMA_MAX
+                  jsonSchema.length > userPlanLimit
                     ? "text-destructive font-medium"
-                    : jsonSchema.length > PATTERN_LIMITS.SCHEMA_MAX * 0.9
+                    : jsonSchema.length > userPlanLimit * 0.9
                     ? "text-yellow-600 dark:text-yellow-400"
                     : "text-muted-foreground"
                 }`}>
-                  {jsonSchema.length} / {PATTERN_LIMITS.SCHEMA_MAX} characters
+                  {jsonSchema.length} / {userPlanLimit.toLocaleString()} characters
                 </span>
               </div>
             </div>
@@ -2086,13 +2122,13 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
                 {template && (
                   <div className="flex items-center justify-between mt-2">
                     <span className={`text-xs ${
-                      template.length > PATTERN_LIMITS.SCHEMA_MAX
+                      template.length > userPlanLimit
                         ? "text-destructive font-medium"
-                        : template.length > PATTERN_LIMITS.SCHEMA_MAX * 0.9
+                        : template.length > userPlanLimit * 0.9
                         ? "text-yellow-600 dark:text-yellow-400"
                         : "text-muted-foreground"
                     }`}>
-                      {template.length} / {PATTERN_LIMITS.SCHEMA_MAX} characters
+                      {template.length} / {userPlanLimit.toLocaleString()} characters
                     </span>
                     {format === "text" && isTemplateEditable && (
                       <button

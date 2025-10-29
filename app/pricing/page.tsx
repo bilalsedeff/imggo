@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import React from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -22,7 +22,7 @@ const PLANS = [
       requests: "50 requests/month",
       burstLimit: "1 req/min",
       imageSize: "2 MB",
-      characters: "1,000 characters/request",
+      characters: "Up to 1,000 character pattern schema",
       apiKeys: "2 API keys",
       patterns: "5 patterns",
       webhooks: "3 webhooks",
@@ -41,7 +41,7 @@ const PLANS = [
       requests: "500 requests/month",
       burstLimit: "10 req/min",
       imageSize: "5 MB",
-      characters: "5,000 characters/request",
+      characters: "Up to 5,000 character pattern schema",
       apiKeys: "Unlimited API keys",
       patterns: "25 patterns",
       webhooks: "10 webhooks",
@@ -60,7 +60,7 @@ const PLANS = [
       requests: "3,000 requests/month",
       burstLimit: "No limits",
       imageSize: "10 MB",
-      characters: "5,000 characters/request",
+      characters: "Up to 5,000 character pattern schema",
       apiKeys: "Unlimited API keys",
       patterns: "100 patterns",
       webhooks: "25 webhooks",
@@ -79,7 +79,7 @@ const PLANS = [
       requests: "15,000 requests/month",
       burstLimit: "No limits",
       imageSize: "20 MB",
-      characters: "10,000 characters/request",
+      characters: "Up to 10,000 character pattern schema",
       apiKeys: "Unlimited API keys",
       patterns: "Unlimited",
       webhooks: "Unlimited",
@@ -119,9 +119,80 @@ const FEATURE_CATEGORIES = [
   },
 ];
 
+interface UserPlanResponse {
+  plan: {
+    name: string;
+    displayName: string;
+  };
+}
+
 export default function PricingPage() {
   const { session } = useAuth();
   const [billingCycle, setBillingCycle] = useState<BillingCycle>("monthly");
+  const [userPlan, setUserPlan] = useState<UserPlanResponse | null>(null);
+  const [isLoadingPlan, setIsLoadingPlan] = useState(false);
+
+  // Fetch user's current plan
+  useEffect(() => {
+    if (!session?.access_token) {
+      setUserPlan(null);
+      return;
+    }
+
+    const fetchUserPlan = async () => {
+      setIsLoadingPlan(true);
+      try {
+        const response = await fetch("/api/user/usage", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setUserPlan({
+            plan: {
+              name: data.plan.name,
+              displayName: data.plan.displayName,
+            },
+          });
+        }
+      } catch (error) {
+        console.error("Failed to fetch user plan:", error);
+      } finally {
+        setIsLoadingPlan(false);
+      }
+    };
+
+    fetchUserPlan();
+  }, [session]);
+
+  // Helper to determine if a plan is the user's current plan
+  const isCurrentPlan = (planId: string): boolean => {
+    if (!userPlan || !session) return false;
+    return userPlan.plan.name === planId;
+  };
+
+  // Helper to determine button text based on user's current plan
+  const getButtonText = (planId: string): string => {
+    if (!session) return planId === "free" ? "Start Free" : "Get Started";
+    if (!userPlan || isLoadingPlan) return "Loading...";
+
+    if (isCurrentPlan(planId)) return "Current Plan";
+
+    // Define plan hierarchy
+    const planOrder: Record<string, number> = {
+      free: 0,
+      starter: 1,
+      pro: 2,
+      business: 3,
+    };
+
+    const currentOrder = planOrder[userPlan.plan.name] ?? 0;
+    const targetOrder = planOrder[planId] ?? 0;
+
+    if (targetOrder > currentOrder) return "Upgrade";
+    if (targetOrder < currentOrder) return "Downgrade";
+    return "Get Started";
+  };
 
   const getPrice = (plan: typeof PLANS[0]) => {
     if (plan.monthly === 0) return "Free";
@@ -208,13 +279,18 @@ export default function PricingPage() {
               const price = getPrice(plan);
               const savings = getSavings(plan);
 
+              const isCurrent = isCurrentPlan(plan.id);
+              const buttonText = getButtonText(plan.id);
+
               return (
                 <div
                   key={plan.id}
-                  className={`relative border rounded-lg p-6 flex flex-col ${
-                    plan.highlight
-                      ? "border-primary bg-primary/5"
-                      : "border-border"
+                  className={`relative rounded-lg p-6 flex flex-col ${
+                    isCurrent
+                      ? "border-2 border-primary bg-primary/5"
+                      : plan.highlight
+                      ? "border border-primary bg-primary/5"
+                      : "border border-border"
                   }`}
                 >
                   {plan.highlight && (
@@ -248,24 +324,29 @@ export default function PricingPage() {
                     )}
                   </div>
 
-                  <Link
-                    href={
-                      session
-                        ? "/settings/billing"
-                        : "/auth/signin"
-                    }
-                    className={`w-full px-4 py-2 text-sm font-medium rounded-lg transition text-center ${
-                      plan.highlight
-                        ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                        : "border border-border hover:bg-accent"
-                    }`}
-                  >
-                    {plan.monthly === 0
-                      ? "Start Free"
-                      : session
-                      ? "Upgrade"
-                      : "Get Started"}
-                  </Link>
+                  {isCurrent ? (
+                    <button
+                      disabled
+                      className="w-full px-4 py-2 text-sm font-medium rounded-lg transition text-center bg-muted text-muted-foreground cursor-not-allowed opacity-60"
+                    >
+                      {buttonText}
+                    </button>
+                  ) : (
+                    <Link
+                      href={
+                        session
+                          ? "/settings/billing"
+                          : "/auth/signin"
+                      }
+                      className={`w-full px-4 py-2 text-sm font-medium rounded-lg transition text-center ${
+                        plan.highlight
+                          ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                          : "border border-border hover:bg-accent"
+                      }`}
+                    >
+                      {buttonText}
+                    </Link>
+                  )}
 
                   <div className="mt-6 space-y-2 flex-1">
                     <div className="text-xs font-medium text-muted-foreground mb-3">
