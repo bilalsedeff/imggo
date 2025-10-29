@@ -447,13 +447,11 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
 
           // Load the appropriate format-specific schema
           let templatePreview = "";
-          let schemaStr = "";
 
           switch (patternData.format) {
             case "json":
               if (patternData.json_schema) {
                 templatePreview = JSON.stringify(patternData.json_schema, null, 2);
-                schemaStr = templatePreview;
               }
               break;
             case "yaml":
@@ -486,7 +484,8 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
               break;
           }
 
-          setJsonSchema(schemaStr);
+          // For versioning, JSON Schema field should be empty (user can optionally provide their own)
+          setJsonSchema("");
           setTemplate(templatePreview);
           setOriginalTemplate(templatePreview); // Save original for delta detection
           setIsTemplateEditable(false);
@@ -619,13 +618,11 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
 
       // Load the appropriate format-specific schema
       let templatePreview = "";
-      let schemaStr = "";
 
       switch (patternData.format) {
         case "json":
           if (patternData.json_schema) {
             templatePreview = JSON.stringify(patternData.json_schema, null, 2);
-            schemaStr = templatePreview;
           }
           break;
         case "yaml":
@@ -658,7 +655,8 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
           break;
       }
 
-      setJsonSchema(schemaStr);
+      // For versioning, JSON Schema field should be empty (user can optionally provide their own)
+      setJsonSchema("");
       setTemplate(templatePreview);
       setOriginalTemplate(templatePreview); // Save original for delta detection
       setIsTemplateEditable(false); // Don't mark as editable initially - only when user clicks "Edit Template"
