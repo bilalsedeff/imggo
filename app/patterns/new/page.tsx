@@ -509,19 +509,28 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
   useEffect(() => {
     if (selectedPatternId) return; // Do not reset when editing existing pattern
 
-    setName("");
+    // Only reset everything if a template has been generated
+    // If no template yet, keep name and instructions (user might just be exploring formats)
+    const hasGeneratedTemplate = template.length > 0 || originalTemplate.length > 0;
+
+    if (hasGeneratedTemplate) {
+      // Template exists - changing format requires full reset
+      setName("");
+      setInstructions("");
+      setOriginalInstructions("");
+      setNameAvailable(null);
+    }
+
+    // Always reset template-related fields when format changes
     setTemplate("");
     setOriginalTemplate("");
     setJsonSchema("");
-    setInstructions("");
-    setOriginalInstructions("");
     setIsValidated(false);
     setValidationErrors([]);
     setIsTemplateEditable(false);
     setError("");
     setSuccess("");
     setMarkdownError("");
-    setNameAvailable(null);
 
     if (format === "csv") {
       setCsvDelimiter("comma");
@@ -530,7 +539,7 @@ const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
       // For other formats reset delimiter baseline to avoid stale comparisons
       setOriginalCsvDelimiter("comma");
     }
-  }, [format, selectedPatternId]);
+  }, [format, selectedPatternId, template, originalTemplate]);
 
   useEffect(() => {
     if (format !== "csv") {
