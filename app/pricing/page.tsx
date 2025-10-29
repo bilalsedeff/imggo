@@ -203,7 +203,14 @@ export default function PricingPage() {
 
       const currentOrder = planOrder[userPlan.plan.name] ?? 0;
       const targetOrder = planOrder[planId] ?? 0;
+      const normalizedCurrentPlan = normalizePlanName(userPlan.plan.name);
 
+      // If user is on Free plan, show "Get Started" for all paid plans
+      if (normalizedCurrentPlan === "free") {
+        return planId === "free" ? "Current Plan" : "Get Started";
+      }
+
+      // For paid plans: show Upgrade/Downgrade
       if (targetOrder > currentOrder) return "Upgrade";
       if (targetOrder < currentOrder) return "Downgrade";
     }
