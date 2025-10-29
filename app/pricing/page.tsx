@@ -165,19 +165,10 @@ export default function PricingPage() {
     fetchUserPlan();
   }, [session]);
 
-  // Helper to normalize plan names (DB uses "plus"/"premium", UI uses "pro"/"business")
-  const normalizePlanName = (name: string): string => {
-    const mapping: Record<string, string> = {
-      plus: "pro",
-      premium: "business",
-    };
-    return mapping[name] || name;
-  };
-
   // Helper to determine if a plan is the user's current plan
   const isCurrentPlan = (planId: string): boolean => {
     if (!userPlan || !session) return false;
-    return normalizePlanName(userPlan.plan.name) === planId;
+    return userPlan.plan.name === planId;
   };
 
   // Helper to determine button text based on user's current plan
@@ -191,22 +182,20 @@ export default function PricingPage() {
     if (userPlan) {
       if (isCurrentPlan(planId)) return "Current Plan";
 
-      // Define plan hierarchy (map both UI IDs and DB names)
+      // Define plan hierarchy
       const planOrder: Record<string, number> = {
         free: 0,
         starter: 1,
         pro: 2,
-        plus: 2, // Database name for Pro
         business: 3,
-        premium: 3, // Database name for Business
+        enterprise: 4,
       };
 
       const currentOrder = planOrder[userPlan.plan.name] ?? 0;
       const targetOrder = planOrder[planId] ?? 0;
-      const normalizedCurrentPlan = normalizePlanName(userPlan.plan.name);
 
       // If user is on Free plan, show "Get Started" for all paid plans
-      if (normalizedCurrentPlan === "free") {
+      if (userPlan.plan.name === "free") {
         return planId === "free" ? "Current Plan" : "Get Started";
       }
 

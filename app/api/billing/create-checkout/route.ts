@@ -14,7 +14,7 @@ import { z } from "zod";
 // ============================================================================
 
 const CreateCheckoutSchema = z.object({
-  planName: z.enum(["starter", "plus", "premium"]),
+  planName: z.enum(["starter", "pro", "business"]),
   billingCycle: z.enum(["monthly", "yearly"]),
   successUrl: z.string().url().optional(),
   cancelUrl: z.string().url().optional(),

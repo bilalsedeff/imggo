@@ -27,14 +27,19 @@ const TEST_USERS = [
     planName: 'free'
   },
   {
-    email: 'plus@imggo.com',
+    email: 'starter@imggo.com',
     password: '123456',
-    planName: 'plus'
+    planName: 'starter'
   },
   {
-    email: 'premium@imggo.com',
+    email: 'pro@imggo.com',
     password: '123456',
-    planName: 'premium'
+    planName: 'pro'
+  },
+  {
+    email: 'business@imggo.com',
+    password: '123456',
+    planName: 'business'
   },
   {
     email: 'enterprise@imggo.com',

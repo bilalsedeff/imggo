@@ -139,7 +139,7 @@ export async function getUserPlan(userId: string): Promise<UserPlanDetails> {
 /**
  * Get plan by name
  *
- * @param planName - Plan name ('free', 'starter', 'plus', 'premium', 'enterprise')
+ * @param planName - Plan name ('free', 'starter', 'pro', 'business', 'enterprise')
  * @returns Plan or null if not found
  */
 export async function getPlanByName(planName: string): Promise<Plan | null> {
