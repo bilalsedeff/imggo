@@ -12,6 +12,7 @@ import * as xmlJs from "xml-js";
 import { validateXmlStructure } from "./validators/xmlValidator";
 import { validateYamlStructure } from "./validators/yamlValidator";
 import { validatePlainTextStructure } from "./validators/plainTextValidator";
+import type { FormatMetadata } from "@/lib/deconstructionConverter";
 
 export type ModelProfile = "managed-default" | "oss-detector";
 
@@ -60,6 +61,7 @@ export async function inferManifest(params: {
   yamlSchema?: string;
   xmlSchema?: string;
   plainTextSchema?: string;
+  formatMetadata?: FormatMetadata;
   modelProfile?: ModelProfile;
 }): Promise<{
   manifest: Record<string, unknown>;
@@ -78,6 +80,7 @@ export async function inferManifest(params: {
     yamlSchema,
     xmlSchema,
     plainTextSchema,
+    formatMetadata,
     modelProfile = "managed-default",
   } = params;
 
@@ -170,13 +173,15 @@ export async function inferManifest(params: {
       modelProfile === "oss-detector"
         ? await oss.inferManifestOSS(imageUrl, instructions, inferFormat, effectiveJsonSchema)
         : await openai.inferManifest(
-            imageUrl, 
-            instructions, 
-            inferFormat, 
-            effectiveJsonSchema, 
-            csvSchema, 
-            csvDelimiter, 
-            imageFilename
+            imageUrl,
+            instructions,
+            inferFormat,
+            effectiveJsonSchema,
+            csvSchema,
+            csvDelimiter,
+            imageFilename,
+            plainTextSchema,
+            formatMetadata
           );
 
     // ===== VALIDATION LAYER FOR NON-JSON FORMATS =====

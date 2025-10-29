@@ -11,6 +11,103 @@ import {
   UpdatePatternInput,
   Pattern,
 } from "@/schemas/pattern";
+import { convertToJsonSchema } from "@/lib/deconstructionConverter";
+
+/**
+ * Helper: Convert format schema to JSON Schema + metadata
+ * For YAML/XML formats, this enables structured outputs
+ */
+function processSchemaConversion(
+  format: string,
+  schemas: {
+    json_schema?: Record<string, unknown> | null;
+    yaml_schema?: string | null;
+    xml_schema?: string | null;
+    csv_schema?: string | null;
+    plain_text_schema?: string | null;
+  }
+): {
+  json_schema: Record<string, unknown> | null;
+  format_metadata: Record<string, unknown> | null;
+} {
+  // For YAML format, convert YAML schema to JSON Schema
+  if (format === "yaml" && schemas.yaml_schema) {
+    try {
+      const result = convertToJsonSchema("yaml", schemas.yaml_schema);
+      return {
+        json_schema: result.jsonSchema,
+        format_metadata: result.metadata,
+      };
+    } catch (error) {
+      logger.error("Failed to convert YAML schema", error);
+      // Fall back to original behavior
+      return {
+        json_schema: schemas.json_schema || null,
+        format_metadata: null,
+      };
+    }
+  }
+
+  // For XML format, convert XML schema to JSON Schema
+  if (format === "xml" && schemas.xml_schema) {
+    try {
+      const result = convertToJsonSchema("xml", schemas.xml_schema);
+      return {
+        json_schema: result.jsonSchema,
+        format_metadata: result.metadata,
+      };
+    } catch (error) {
+      logger.error("Failed to convert XML schema", error);
+      // Fall back to original behavior
+      return {
+        json_schema: schemas.json_schema || null,
+        format_metadata: null,
+      };
+    }
+  }
+
+  // For CSV format, convert CSV schema to JSON Schema
+  if (format === "csv" && schemas.csv_schema) {
+    try {
+      const result = convertToJsonSchema("csv", schemas.csv_schema);
+      return {
+        json_schema: result.jsonSchema,
+        format_metadata: result.metadata,
+      };
+    } catch (error) {
+      logger.error("Failed to convert CSV schema", error);
+      // Fall back to original behavior
+      return {
+        json_schema: schemas.json_schema || null,
+        format_metadata: null,
+      };
+    }
+  }
+
+  // For plain text format, convert text schema to JSON Schema
+  if (format === "text" && schemas.plain_text_schema) {
+    try {
+      const result = convertToJsonSchema("text", schemas.plain_text_schema);
+      return {
+        json_schema: result.jsonSchema,
+        format_metadata: result.metadata,
+      };
+    } catch (error) {
+      logger.error("Failed to convert plain text schema", error);
+      // Fall back to original behavior
+      return {
+        json_schema: schemas.json_schema || null,
+        format_metadata: null,
+      };
+    }
+  }
+
+  // For JSON format or if conversion not needed, use provided json_schema
+  return {
+    json_schema: schemas.json_schema || null,
+    format_metadata: null,
+  };
+}
 
 /**
  * Create a new pattern
@@ -22,16 +119,27 @@ export async function createPattern(
   try {
     logger.info("Creating pattern", { user_id: userId, name: input.name });
 
+    // Convert format-specific schema to JSON Schema + metadata (for structured outputs)
+    const { json_schema, format_metadata } = processSchemaConversion(input.format, {
+      json_schema: input.json_schema,
+      yaml_schema: input.yaml_schema,
+      xml_schema: input.xml_schema,
+      csv_schema: input.csv_schema,
+      plain_text_schema: input.plain_text_schema,
+    });
+
     const { data, error } = await insertRow(supabaseServer, "patterns", {
       user_id: userId,
       name: input.name,
       format: input.format,
       instructions: input.instructions,
-      json_schema: (input.json_schema || null) as Database["public"]["Tables"]["patterns"]["Insert"]["json_schema"],
+      json_schema: (json_schema || null) as Database["public"]["Tables"]["patterns"]["Insert"]["json_schema"],
       yaml_schema: input.yaml_schema || null,
       xml_schema: input.xml_schema || null,
       csv_schema: input.csv_schema || null,
+      csv_delimiter: input.csv_delimiter || null,
       plain_text_schema: input.plain_text_schema || null,
+      format_metadata: (format_metadata || null) as Database["public"]["Tables"]["patterns"]["Insert"]["format_metadata"],
       model_profile: input.model_profile,
       version: input.version ?? 1, // Use input version (0 for drafts, 1+ for published)
       is_active: input.is_active ?? true, // Use input is_active (false for drafts, true for published)
@@ -62,10 +170,11 @@ export async function createPattern(
       await insertRow(supabaseServer, "pattern_versions", {
         pattern_id: data.id,
         version: input.version ?? 1,
-        json_schema: (input.json_schema || null) as Database["public"]["Tables"]["pattern_versions"]["Insert"]["json_schema"],
+        json_schema: (json_schema || null) as Database["public"]["Tables"]["pattern_versions"]["Insert"]["json_schema"],
         yaml_schema: input.yaml_schema || null,
         xml_schema: input.xml_schema || null,
         csv_schema: input.csv_schema || null,
+        csv_delimiter: input.csv_delimiter || null,
         plain_text_schema: input.plain_text_schema || null,
         instructions: input.instructions,
         format: input.format,
@@ -173,8 +282,34 @@ export async function updatePattern(
     if (input.name) updateData.name = input.name;
     if (input.format) updateData.format = input.format;
     if (input.instructions) updateData.instructions = input.instructions;
-    if (input.json_schema !== undefined) updateData.json_schema = input.json_schema;
+    if (input.yaml_schema !== undefined) updateData.yaml_schema = input.yaml_schema;
+    if (input.xml_schema !== undefined) updateData.xml_schema = input.xml_schema;
+    if (input.csv_schema !== undefined) updateData.csv_schema = input.csv_schema;
+    if (input.csv_delimiter !== undefined) updateData.csv_delimiter = input.csv_delimiter;
+    if (input.plain_text_schema !== undefined) updateData.plain_text_schema = input.plain_text_schema;
     if (input.is_active !== undefined) updateData.is_active = input.is_active;
+
+    // If format or any schema changed, regenerate JSON Schema + metadata
+    if (input.format || input.yaml_schema !== undefined || input.xml_schema !== undefined ||
+        input.csv_schema !== undefined || input.plain_text_schema !== undefined) {
+
+      const { json_schema, format_metadata } = processSchemaConversion(
+        input.format || "json", // Will be determined from existing pattern if not provided
+        {
+          json_schema: input.json_schema,
+          yaml_schema: input.yaml_schema,
+          xml_schema: input.xml_schema,
+          csv_schema: input.csv_schema,
+          plain_text_schema: input.plain_text_schema,
+        }
+      );
+
+      if (json_schema) updateData.json_schema = json_schema;
+      if (format_metadata) updateData.format_metadata = format_metadata;
+    } else if (input.json_schema !== undefined) {
+      // If only json_schema is provided without format change, use it directly
+      updateData.json_schema = input.json_schema;
+    }
 
     // Note: We need to verify user_id separately since our helper only supports single condition
     // First verify ownership

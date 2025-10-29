@@ -301,7 +301,7 @@ export default function PricingPage() {
                   key={plan.id}
                   className={`relative rounded-lg p-6 flex flex-col ${
                     isCurrent
-                      ? "border-2 border-primary bg-primary/5"
+                      ? "border-2 border-green-500/60"
                       : plan.highlight
                       ? "border border-primary bg-primary/5"
                       : "border border-border"

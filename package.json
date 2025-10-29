@@ -35,6 +35,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/uuid": "^10.0.0",
     "@types/xml2js": "^0.4.14",
+    "@xmldom/xmldom": "^0.8.11",
     "axios": "^1.12.2",
     "better-sqlite3": "^12.4.1",
     "class-variance-authority": "^0.7.1",

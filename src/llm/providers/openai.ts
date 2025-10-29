@@ -8,6 +8,7 @@ import { ManifestFormat } from "@/lib/formatConverter";
 import { logger } from "@/lib/logger";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
+import { reconstructFromJson, type FormatMetadata } from "@/lib/deconstructionConverter";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -49,6 +50,9 @@ The template should define the structure for extracting data from images.`;
 - Create a CSV header row with all column names
 - Add 2-3 example data rows with realistic placeholder values
 - Use ${csvDelimiter === "semicolon" ? "semicolon (;)" : "comma (,)"} as delimiter
+- CRITICAL: Do NOT use ${csvDelimiter === "semicolon" ? "commas (,)" : "semicolons (;)"} in cell values - they will be interpreted as delimiters
+- If you need punctuation, use periods, dashes, or other separators instead
+- Keep values simple and avoid complex punctuation
 - Keep it simple and tabular
 - Column names should match the data fields in instructions`;
         break;
@@ -143,7 +147,8 @@ export async function inferManifest(
   csvSchema?: string,
   csvDelimiter?: "comma" | "semicolon",
   imageFilename?: string,
-  plainTextSchema?: string
+  plainTextSchema?: string,
+  formatMetadata?: FormatMetadata
 ): Promise<{
   manifest: Record<string, unknown>;
   latencyMs: number;
@@ -227,7 +232,73 @@ Use the exact field names above (case-sensitive) as JSON property keys. Do not r
     }
 
     // ========================================================================
-    // XML/YAML: Schema-Guided Prompting (No Structured Output Available)
+    // XML/YAML: Structured Output (100% accuracy) → Format Reconstruction
+    // ========================================================================
+    if ((format === "xml" || format === "yaml") && jsonSchema && formatMetadata) {
+      const formatUpper = format.toUpperCase();
+
+      logger.info(`${formatUpper} inference with structured output`, {
+        has_json_schema: Boolean(jsonSchema),
+        has_format_metadata: Boolean(formatMetadata),
+      });
+
+      // Use structured output with the JSON Schema
+      const schema = createStructuredOutputSchema(jsonSchema);
+
+      const systemPrompt = `You are an expert image analysis AI that extracts structured data from images.
+Analyze carefully and extract information according to instructions.
+Be precise. Use null for unavailable data. Follow schema exactly.`;
+
+      const userPrompt = `${instructions}
+${imageFilename ? `\nImage Filename: ${imageFilename}` : ''}
+
+Analyze this image and extract information in the exact schema structure.`;
+
+      const response = await openai.chat.completions.create({
+        model: MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: userPrompt },
+              { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
+            ],
+          },
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: { name: `${format}_analysis`, strict: true, schema },
+        },
+        temperature: 0.2,
+        max_tokens: 4000,
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) throw new Error("No content in OpenAI response");
+
+      const jsonResponse = JSON.parse(content);
+
+      // Reconstruct to original format using metadata
+      const reconstructed = reconstructFromJson(jsonResponse, formatMetadata);
+
+      const latencyMs = Date.now() - startTime;
+      logger.info(`${formatUpper} manifest inferred (structured output)`, {
+        latency_ms: latencyMs,
+        tokens: response.usage?.total_tokens,
+        preview: reconstructed.substring(0, 100),
+      });
+
+      // Use _raw marker so formatConverter doesn't wrap it
+      return {
+        manifest: { _raw: reconstructed, _format: format },
+        latencyMs,
+        tokensUsed: response.usage?.total_tokens,
+      };
+    }
+
+    // ========================================================================
+    // XML/YAML: Legacy Fallback (Schema-Guided Prompting for old patterns)
     // ========================================================================
     if (format === "xml" || format === "yaml") {
       const formatUpper = format.toUpperCase();
@@ -237,9 +308,13 @@ Use the exact field names above (case-sensitive) as JSON property keys. Do not r
         throw new Error(`${formatUpper} format requires a schema example`);
       }
 
+      logger.info(`${formatUpper} inference with legacy schema-guided prompting`, {
+        reason: "No format_metadata (old pattern)",
+      });
+
       // Convert object schema to string if needed
-      const schemaString = typeof schemaExample === 'string' 
-        ? schemaExample 
+      const schemaString = typeof schemaExample === 'string'
+        ? schemaExample
         : JSON.stringify(schemaExample, null, 2);
 
       const systemPrompt = `You are an expert image analysis AI that generates ${formatUpper} output following an exact schema structure.
@@ -295,7 +370,7 @@ Remember: Change ONLY the values, keep ALL structure/tags/keys identical.`;
       }
 
       const latencyMs = Date.now() - startTime;
-      logger.info(`${formatUpper} manifest inferred (schema-guided)`, {
+      logger.info(`${formatUpper} manifest inferred (legacy schema-guided)`, {
         latency_ms: latencyMs,
         tokens: response.usage?.total_tokens,
         preview: cleanedContent.substring(0, 100),
