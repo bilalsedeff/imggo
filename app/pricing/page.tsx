@@ -165,33 +165,51 @@ export default function PricingPage() {
     fetchUserPlan();
   }, [session]);
 
+  // Helper to normalize plan names (DB uses "plus"/"premium", UI uses "pro"/"business")
+  const normalizePlanName = (name: string): string => {
+    const mapping: Record<string, string> = {
+      plus: "pro",
+      premium: "business",
+    };
+    return mapping[name] || name;
+  };
+
   // Helper to determine if a plan is the user's current plan
   const isCurrentPlan = (planId: string): boolean => {
     if (!userPlan || !session) return false;
-    return userPlan.plan.name === planId;
+    return normalizePlanName(userPlan.plan.name) === planId;
   };
 
   // Helper to determine button text based on user's current plan
   const getButtonText = (planId: string): string => {
     if (!session) return planId === "free" ? "Start Free" : "Get Started";
-    if (!userPlan || isLoadingPlan) return "Loading...";
 
-    if (isCurrentPlan(planId)) return "Current Plan";
+    // Only show loading while actually loading
+    if (isLoadingPlan) return "Loading...";
 
-    // Define plan hierarchy
-    const planOrder: Record<string, number> = {
-      free: 0,
-      starter: 1,
-      pro: 2,
-      business: 3,
-    };
+    // If we have a user plan, determine button text
+    if (userPlan) {
+      if (isCurrentPlan(planId)) return "Current Plan";
 
-    const currentOrder = planOrder[userPlan.plan.name] ?? 0;
-    const targetOrder = planOrder[planId] ?? 0;
+      // Define plan hierarchy (map both UI IDs and DB names)
+      const planOrder: Record<string, number> = {
+        free: 0,
+        starter: 1,
+        pro: 2,
+        plus: 2, // Database name for Pro
+        business: 3,
+        premium: 3, // Database name for Business
+      };
 
-    if (targetOrder > currentOrder) return "Upgrade";
-    if (targetOrder < currentOrder) return "Downgrade";
-    return "Get Started";
+      const currentOrder = planOrder[userPlan.plan.name] ?? 0;
+      const targetOrder = planOrder[planId] ?? 0;
+
+      if (targetOrder > currentOrder) return "Upgrade";
+      if (targetOrder < currentOrder) return "Downgrade";
+    }
+
+    // Fallback: if no plan data, show generic text
+    return planId === "free" ? "Start Free" : "Get Started";
   };
 
   const getPrice = (plan: typeof PLANS[0]) => {
