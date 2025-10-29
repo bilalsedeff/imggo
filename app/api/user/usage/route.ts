@@ -5,7 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { authenticateRequest } from "@/lib/auth-unified";
+import { requireAuthOrApiKey } from "@/lib/auth-unified";
 import { getUserPlan } from "@/services/planService";
 import { logger } from "@/lib/logger";
 
@@ -15,14 +15,8 @@ import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
   try {
-    // Authenticate request
-    const authContext = await authenticateRequest(request);
-    if (!authContext.authenticated || !authContext.userId) {
-      return NextResponse.json(
-        { error: "Unauthorized", message: "Authentication required" },
-        { status: 401 }
-      );
-    }
+    // Authenticate request (throws ApiError if not authenticated)
+    const authContext = await requireAuthOrApiKey(request);
 
     // Get user plan and usage details
     const userPlan = await getUserPlan(authContext.userId);
