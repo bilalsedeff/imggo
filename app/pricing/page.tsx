@@ -41,7 +41,7 @@ const PLANS = [
       requests: "500 requests/month",
       burstLimit: "10 req/min",
       imageSize: "5 MB",
-      characters: "Up to 5,000 character pattern schema",
+      characters: "Up to 2,500 character pattern schema",
       apiKeys: "Unlimited API keys",
       patterns: "25 patterns",
       webhooks: "10 webhooks",
