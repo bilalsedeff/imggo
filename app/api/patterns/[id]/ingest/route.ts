@@ -3,7 +3,7 @@
  * POST /api/patterns/:id/ingest - Enqueue image processing job
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import {
   withErrorHandling,
   parseBody,
@@ -14,7 +14,6 @@ import {
 import { IngestRequestSchema } from "@/schemas/manifest";
 import * as patternService from "@/services/patternService";
 import * as jobService from "@/services/jobService";
-import { processImage } from "@/services/imageProcessingService";
 import { logger } from "@/lib/logger";
 import { requireAuthOrApiKey, getRequestIp } from "@/lib/auth-unified";
 import {
@@ -23,36 +22,10 @@ import {
   getRateLimitHeaders,
   RateLimitStatus,
 } from "@/middleware/rateLimitParametric";
-import { deleteFile, uploadToSupabaseStorage } from "@/services/storageService";
-import { convertManifest, getContentType, ManifestFormat } from "@/lib/formatConverter";
+import { uploadToSupabaseStorage } from "@/services/storageService";
 
 // Configure Vercel function timeout (Pro: 30s max)
 export const maxDuration = 30;
-
-/**
- * Determine if an error is transient (retryable) or permanent
- * Transient errors: Network issues, temporary API failures, timeouts
- * Permanent errors: Invalid schema, missing files, authentication failures
- */
-function isTransientError(errorMsg: string): boolean {
-  const transientPatterns = [
-    /timeout/i,
-    /network/i,
-    /ECONNREFUSED/i,
-    /ECONNRESET/i,
-    /ETIMEDOUT/i,
-    /socket hang up/i,
-    /rate limit/i,
-    /429/i, // Too Many Requests
-    /503/i, // Service Unavailable
-    /502/i, // Bad Gateway
-    /504/i, // Gateway Timeout
-    /downloading/i, // Image download issues
-    /fetch.*failed/i,
-  ];
-
-  return transientPatterns.some((pattern) => pattern.test(errorMsg));
-}
 
 export const POST = withErrorHandling(
   async (
@@ -98,8 +71,6 @@ export const POST = withErrorHandling(
     let imageUrl: string;
     let idempotencyKey: string | undefined;
     let extras: Record<string, unknown> | undefined;
-
-    let uploadedFilePath: string | undefined;
 
     if (isMultipart) {
       // 📤 MULTIPART: Direct file upload
@@ -150,7 +121,6 @@ export const POST = withErrorHandling(
       });
 
       imageUrl = uploadResult.publicUrl;
-      uploadedFilePath = uploadResult.path;
 
       logger.info("Image uploaded successfully", {
         image_url: imageUrl,

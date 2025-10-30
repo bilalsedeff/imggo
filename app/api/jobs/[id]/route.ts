@@ -66,6 +66,9 @@ export const GET = withErrorHandling(
       } else if (pattern.format === "csv" && pattern.csv_schema) {
         // Reorder CSV rows to match header order from schema
         const firstLine = (pattern.csv_schema as string).split('\n')[0];
+        if (!firstLine) {
+          throw new ApiError("CSV schema is empty or invalid", 400);
+        }
         const delimiter = pattern.csv_delimiter === "semicolon" ? ";" : ",";
         const expectedHeaders = firstLine.split(delimiter).map(h => h.trim());
 

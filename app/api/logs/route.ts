@@ -14,11 +14,11 @@ import {
 import { supabaseServer } from "@/lib/supabase-server";
 
 const LogsQuerySchema = z.object({
-  time_range: z.enum(["1m", "15m", "1h", "6h", "12h", "24h", "all"]).optional().default("24h"),
+  time_range: z.enum(["1m", "15m", "1h", "6h", "12h", "24h", "all"]).default("24h"),
   pattern_id: z.string().uuid().optional(),
   status: z.enum(["queued", "running", "succeeded", "failed"]).optional(),
-  page: z.coerce.number().int().positive().optional().default(1),
-  per_page: z.coerce.number().int().min(1).max(100).optional().default(50),
+  page: z.coerce.number().int().positive().default(1),
+  per_page: z.coerce.number().int().min(1).max(100).default(50),
 });
 
 // Time range to milliseconds mapping
@@ -36,8 +36,11 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const user = await requireAuth(request);
   const query = parseQuery(request, LogsQuerySchema);
 
-  // Calculate offset for pagination
-  const offset = (query.page - 1) * query.per_page;
+  // Calculate offset for pagination (page and per_page have defaults, guaranteed to be numbers)
+  const page = query.page ?? 1;
+  const perPage = query.per_page ?? 50;
+  const timeRange = query.time_range ?? "24h";
+  const offset = (page - 1) * perPage;
 
   // Build base query
   let queryBuilder = supabaseServer
@@ -66,8 +69,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     .eq("patterns.user_id", user.userId);
 
   // Apply time range filter
-  if (query.time_range !== "all") {
-    const msAgo = TIME_RANGE_MS[query.time_range];
+  if (timeRange !== "all") {
+    const msAgo = TIME_RANGE_MS[timeRange];
     const timestamp = new Date(Date.now() - msAgo).toISOString();
     queryBuilder = queryBuilder.gte("created_at", timestamp);
   }
@@ -85,7 +88,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // Order by most recent first
   queryBuilder = queryBuilder
     .order("created_at", { ascending: false })
-    .range(offset, offset + query.per_page - 1);
+    .range(offset, offset + perPage - 1);
 
   const { data: jobs, error, count } = await queryBuilder;
 
@@ -96,10 +99,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   return successResponse({
     data: jobs || [],
     pagination: {
-      page: query.page,
-      per_page: query.per_page,
+      page,
+      per_page: perPage,
       total: count || 0,
-      total_pages: Math.ceil((count || 0) / query.per_page),
+      total_pages: Math.ceil((count || 0) / perPage),
     },
   });
 });

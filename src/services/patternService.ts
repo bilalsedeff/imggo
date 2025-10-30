@@ -33,7 +33,7 @@ function processSchemaConversion(
   // For YAML format, convert YAML schema to JSON Schema
   if (format === "yaml" && schemas.yaml_schema) {
     try {
-      const result = convertToJsonSchema("yaml", schemas.yaml_schema);
+      const result = convertToJsonSchema(schemas.yaml_schema, "yaml");
       return {
         json_schema: result.jsonSchema,
         format_metadata: result.metadata,
@@ -51,7 +51,7 @@ function processSchemaConversion(
   // For XML format, convert XML schema to JSON Schema
   if (format === "xml" && schemas.xml_schema) {
     try {
-      const result = convertToJsonSchema("xml", schemas.xml_schema);
+      const result = convertToJsonSchema(schemas.xml_schema, "xml");
       return {
         json_schema: result.jsonSchema,
         format_metadata: result.metadata,
@@ -69,7 +69,7 @@ function processSchemaConversion(
   // For CSV format, convert CSV schema to JSON Schema
   if (format === "csv" && schemas.csv_schema) {
     try {
-      const result = convertToJsonSchema("csv", schemas.csv_schema);
+      const result = convertToJsonSchema(schemas.csv_schema, "csv");
       return {
         json_schema: result.jsonSchema,
         format_metadata: result.metadata,
@@ -87,7 +87,7 @@ function processSchemaConversion(
   // For plain text format, convert text schema to JSON Schema
   if (format === "text" && schemas.plain_text_schema) {
     try {
-      const result = convertToJsonSchema("text", schemas.plain_text_schema);
+      const result = convertToJsonSchema(schemas.plain_text_schema, "text");
       return {
         json_schema: result.jsonSchema,
         format_metadata: result.metadata,

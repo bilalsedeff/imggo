@@ -7,43 +7,703 @@ export type Json =
   | Json[]
 
 export type Database = {
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "13.0.5"
   }
   public: {
     Tables: {
-      [_ in never]: never
+      api_keys: {
+        Row: {
+          created_at: string | null
+          environment: string
+          expires_at: string | null
+          id: string
+          ip_whitelist: string[] | null
+          key_hash: string
+          key_prefix: string
+          last_request_reset_at: string | null
+          last_used_at: string | null
+          last_used_ip: string | null
+          name: string
+          request_count: number | null
+          revoked_at: string | null
+          revoked_reason: string | null
+          scopes: string[]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          environment?: string
+          expires_at?: string | null
+          id?: string
+          ip_whitelist?: string[] | null
+          key_hash: string
+          key_prefix: string
+          last_request_reset_at?: string | null
+          last_used_at?: string | null
+          last_used_ip?: string | null
+          name: string
+          request_count?: number | null
+          revoked_at?: string | null
+          revoked_reason?: string | null
+          scopes?: string[]
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          environment?: string
+          expires_at?: string | null
+          id?: string
+          ip_whitelist?: string[] | null
+          key_hash?: string
+          key_prefix?: string
+          last_request_reset_at?: string | null
+          last_used_at?: string | null
+          last_used_ip?: string | null
+          name?: string
+          request_count?: number | null
+          revoked_at?: string | null
+          revoked_reason?: string | null
+          scopes?: string[]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          error: string | null
+          extras: Json | null
+          fair_use_warning: string | null
+          id: string
+          idempotency_key: string | null
+          image_size_bytes: number | null
+          image_url: string
+          latency_ms: number | null
+          manifest: Json | null
+          pattern_id: string
+          requested_by: string | null
+          started_at: string | null
+          status: Database["public"]["Enums"]["job_status"]
+          tokens_input: number | null
+          tokens_output: number | null
+          tokens_total: number | null
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          error?: string | null
+          extras?: Json | null
+          fair_use_warning?: string | null
+          id?: string
+          idempotency_key?: string | null
+          image_size_bytes?: number | null
+          image_url: string
+          latency_ms?: number | null
+          manifest?: Json | null
+          pattern_id: string
+          requested_by?: string | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["job_status"]
+          tokens_input?: number | null
+          tokens_output?: number | null
+          tokens_total?: number | null
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          error?: string | null
+          extras?: Json | null
+          fair_use_warning?: string | null
+          id?: string
+          idempotency_key?: string | null
+          image_size_bytes?: number | null
+          image_url?: string
+          latency_ms?: number | null
+          manifest?: Json | null
+          pattern_id?: string
+          requested_by?: string | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["job_status"]
+          tokens_input?: number | null
+          tokens_output?: number | null
+          tokens_total?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "jobs_pattern_id_fkey"
+            columns: ["pattern_id"]
+            isOneToOne: false
+            referencedRelation: "patterns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jobs_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pattern_versions: {
+        Row: {
+          created_at: string
+          csv_delimiter: string | null
+          csv_schema: string | null
+          format: Database["public"]["Enums"]["manifest_format"] | null
+          id: string
+          instructions: string
+          json_schema: Json | null
+          pattern_id: string
+          plain_text_schema: string | null
+          version: number
+          xml_schema: string | null
+          yaml_schema: string | null
+        }
+        Insert: {
+          created_at?: string
+          csv_delimiter?: string | null
+          csv_schema?: string | null
+          format?: Database["public"]["Enums"]["manifest_format"] | null
+          id?: string
+          instructions: string
+          json_schema?: Json | null
+          pattern_id: string
+          plain_text_schema?: string | null
+          version: number
+          xml_schema?: string | null
+          yaml_schema?: string | null
+        }
+        Update: {
+          created_at?: string
+          csv_delimiter?: string | null
+          csv_schema?: string | null
+          format?: Database["public"]["Enums"]["manifest_format"] | null
+          id?: string
+          instructions?: string
+          json_schema?: Json | null
+          pattern_id?: string
+          plain_text_schema?: string | null
+          version?: number
+          xml_schema?: string | null
+          yaml_schema?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pattern_versions_pattern_id_fkey"
+            columns: ["pattern_id"]
+            isOneToOne: false
+            referencedRelation: "patterns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      patterns: {
+        Row: {
+          created_at: string
+          csv_delimiter: string | null
+          csv_schema: string | null
+          format: Database["public"]["Enums"]["manifest_format"]
+          format_metadata: Json | null
+          id: string
+          instructions: string
+          is_active: boolean
+          json_schema: Json | null
+          model_profile: string
+          name: string
+          parent_pattern_id: string | null
+          plain_text_schema: string | null
+          updated_at: string
+          user_id: string
+          version: number
+          xml_schema: string | null
+          yaml_schema: string | null
+        }
+        Insert: {
+          created_at?: string
+          csv_delimiter?: string | null
+          csv_schema?: string | null
+          format?: Database["public"]["Enums"]["manifest_format"]
+          format_metadata?: Json | null
+          id?: string
+          instructions: string
+          is_active?: boolean
+          json_schema?: Json | null
+          model_profile?: string
+          name: string
+          parent_pattern_id?: string | null
+          plain_text_schema?: string | null
+          updated_at?: string
+          user_id: string
+          version?: number
+          xml_schema?: string | null
+          yaml_schema?: string | null
+        }
+        Update: {
+          created_at?: string
+          csv_delimiter?: string | null
+          csv_schema?: string | null
+          format?: Database["public"]["Enums"]["manifest_format"]
+          format_metadata?: Json | null
+          id?: string
+          instructions?: string
+          is_active?: boolean
+          json_schema?: Json | null
+          model_profile?: string
+          name?: string
+          parent_pattern_id?: string | null
+          plain_text_schema?: string | null
+          updated_at?: string
+          user_id?: string
+          version?: number
+          xml_schema?: string | null
+          yaml_schema?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patterns_parent_pattern_id_fkey"
+            columns: ["parent_pattern_id"]
+            isOneToOne: false
+            referencedRelation: "patterns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patterns_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plans: {
+        Row: {
+          burst_rate_limit_seconds: number | null
+          created_at: string | null
+          cta_text: string
+          cta_url: string | null
+          description: string
+          display_name: string
+          features: Json | null
+          id: string
+          is_active: boolean | null
+          is_highlighted: boolean | null
+          max_api_keys: number
+          max_characters_per_request: number
+          max_image_size_mb: number
+          max_patterns: number
+          max_template_characters: number
+          max_webhooks: number
+          name: string
+          price_monthly_cents: number
+          price_yearly_cents: number | null
+          requests_per_month: number
+          sort_order: number
+          stripe_price_monthly_id: string | null
+          stripe_price_yearly_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          burst_rate_limit_seconds?: number | null
+          created_at?: string | null
+          cta_text: string
+          cta_url?: string | null
+          description: string
+          display_name: string
+          features?: Json | null
+          id?: string
+          is_active?: boolean | null
+          is_highlighted?: boolean | null
+          max_api_keys: number
+          max_characters_per_request: number
+          max_image_size_mb: number
+          max_patterns: number
+          max_template_characters?: number
+          max_webhooks: number
+          name: string
+          price_monthly_cents: number
+          price_yearly_cents?: number | null
+          requests_per_month: number
+          sort_order: number
+          stripe_price_monthly_id?: string | null
+          stripe_price_yearly_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          burst_rate_limit_seconds?: number | null
+          created_at?: string | null
+          cta_text?: string
+          cta_url?: string | null
+          description?: string
+          display_name?: string
+          features?: Json | null
+          id?: string
+          is_active?: boolean | null
+          is_highlighted?: boolean | null
+          max_api_keys?: number
+          max_characters_per_request?: number
+          max_image_size_mb?: number
+          max_patterns?: number
+          max_template_characters?: number
+          max_webhooks?: number
+          name?: string
+          price_monthly_cents?: number
+          price_yearly_cents?: number | null
+          requests_per_month?: number
+          sort_order?: number
+          stripe_price_monthly_id?: string | null
+          stripe_price_yearly_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      rate_limits: {
+        Row: {
+          created_at: string
+          endpoint: string
+          id: string
+          last_refill_at: string
+          tokens: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          endpoint: string
+          id?: string
+          last_refill_at?: string
+          tokens?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          endpoint?: string
+          id?: string
+          last_refill_at?: string
+          tokens?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rate_limits_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_plans: {
+        Row: {
+          billing_cycle: string | null
+          created_at: string | null
+          current_period_end: string | null
+          current_period_start: string | null
+          is_trial: boolean | null
+          last_burst_request_at: string | null
+          plan_expires_at: string | null
+          plan_id: string
+          plan_started_at: string | null
+          requests_used_current_period: number
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          trial_ends_at: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          billing_cycle?: string | null
+          created_at?: string | null
+          current_period_end?: string | null
+          current_period_start?: string | null
+          is_trial?: boolean | null
+          last_burst_request_at?: string | null
+          plan_expires_at?: string | null
+          plan_id: string
+          plan_started_at?: string | null
+          requests_used_current_period?: number
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          trial_ends_at?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          billing_cycle?: string | null
+          created_at?: string | null
+          current_period_end?: string | null
+          current_period_start?: string | null
+          is_trial?: boolean | null
+          last_burst_request_at?: string | null
+          plan_expires_at?: string | null
+          plan_id?: string
+          plan_started_at?: string | null
+          requests_used_current_period?: number
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          trial_ends_at?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_plans_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      webhooks: {
+        Row: {
+          created_at: string
+          events: string[]
+          id: string
+          is_active: boolean
+          last_triggered_at: string | null
+          secret: string
+          updated_at: string
+          url: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          events?: string[]
+          id?: string
+          is_active?: boolean
+          last_triggered_at?: string | null
+          secret: string
+          updated_at?: string
+          url: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          events?: string[]
+          id?: string
+          is_active?: boolean
+          last_triggered_at?: string | null
+          secret?: string
+          updated_at?: string
+          url?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhooks_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      can_create_api_key: { Args: { p_user_id: string }; Returns: boolean }
+      check_rate_limit: {
+        Args: {
+          p_endpoint: string
+          p_max_tokens?: number
+          p_refill_interval?: unknown
+          p_refill_rate?: number
+        }
+        Returns: boolean
+      }
+      get_my_jobs: {
+        Args: {
+          p_limit?: number
+          p_offset?: number
+          p_pattern_id?: string
+          p_status?: Database["public"]["Enums"]["job_status"]
+        }
+        Returns: {
+          completed_at: string
+          created_at: string
+          error: string
+          id: string
+          image_url: string
+          latency_ms: number
+          manifest: Json
+          pattern_id: string
+          pattern_name: string
+          status: Database["public"]["Enums"]["job_status"]
+          updated_at: string
+        }[]
+      }
+      get_job_error_summary: {
+        Args: {
+          p_user_id: string
+          p_since?: string
+          p_limit?: number
+        }
+        Returns: {
+          error_message: string
+          error_count: number
+          pattern_names: string[]
+          first_occurrence: string
+          last_occurrence: string
+        }[]
+      }
+      get_pattern_job_stats: {
+        Args: { p_user_id: string }
+        Returns: {
+          last_job_at: string
+          pattern_format: Database["public"]["Enums"]["manifest_format"]
+          pattern_id: string
+          pattern_name: string
+          success_rate: number
+          successful_jobs_24h: number
+          total_jobs_24h: number
+        }[]
+      }
+      get_pattern_job_stats_detailed: {
+        Args: { p_pattern_id: string }
+        Returns: {
+          total_jobs: number
+          queued: number
+          running: number
+          succeeded: number
+          failed: number
+          success_rate: number | null
+          avg_latency_ms: number | null
+          p95_latency_ms: number | null
+          p99_latency_ms: number | null
+          total_processing_time_ms: number
+          last_job_at: string | null
+          last_success_at: string | null
+          last_failure_at: string | null
+        }[]
+      }
+      get_pattern_with_version: {
+        Args: { p_pattern_id: string }
+        Returns: {
+          created_at: string
+          format: Database["public"]["Enums"]["manifest_format"]
+          id: string
+          instructions: string
+          is_active: boolean
+          json_schema: Json
+          model_profile: string
+          name: string
+          updated_at: string
+          user_id: string
+          version: number
+        }[]
+      }
+      get_user_rate_limit: {
+        Args: { p_user_id: string }
+        Returns: {
+          requests: number
+          window_seconds: number
+        }[]
+      }
+      get_user_job_counts: {
+        Args: {
+          p_user_id: string
+          p_since?: string
+        }
+        Returns: {
+          queued: number
+          running: number
+          succeeded: number
+          failed: number
+          total: number
+        }[]
+      }
+      increment_user_request_count: {
+        Args: { p_timestamp?: string; p_user_id: string }
+        Returns: undefined
+      }
+      pgmq_archive: {
+        Args: { msg_id: number; queue_name: string }
+        Returns: boolean
+      }
+      pgmq_create: { Args: { queue_name: string }; Returns: undefined }
+      pgmq_delete: {
+        Args: { msg_id: number; queue_name: string }
+        Returns: boolean
+      }
+      pgmq_metrics: {
+        Args: { q_name: string }
+        Returns: {
+          newest_msg_age_sec: number
+          oldest_msg_age_sec: number
+          queue_length: number
+          queue_name: string
+          scrape_time: string
+          total_messages: number
+        }[]
+      }
+      pgmq_read: {
+        Args: { qty: number; queue_name: string; vt: number }
+        Returns: unknown[]
+        SetofOptions: {
+          from: "*"
+          to: "message_record"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      pgmq_send: { Args: { msg: Json; queue_name: string }; Returns: number }
+      publish_pattern_version: {
+        Args: {
+          p_csv_delimiter?: string
+          p_csv_schema?: string
+          p_format: Database["public"]["Enums"]["manifest_format"]
+          p_instructions: string
+          p_json_schema?: Json
+          p_pattern_id: string
+          p_plain_text_schema?: string
+          p_xml_schema?: string
+          p_yaml_schema?: string
+        }
+        Returns: number
+      }
+      reset_monthly_usage: { Args: never; Returns: undefined }
+      switch_to_pattern_version: {
+        Args: {
+          p_pattern_id: string
+          p_target_version: number
+          p_user_id: string
+        }
+        Returns: undefined
+      }
     }
     Enums: {
-      [_ in never]: never
+      job_status: "queued" | "running" | "succeeded" | "failed"
+      manifest_format: "json" | "yaml" | "xml" | "csv" | "text"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -51,27 +711,33 @@ export type Database = {
   }
 }
 
-type PublicSchema = Database[Extract<keyof Database, "public">]
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
-  PublicTableNameOrOptions extends
-    | keyof (PublicSchema["Tables"] & PublicSchema["Views"])
-    | { schema: keyof Database },
-  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
-    ? keyof (Database[PublicTableNameOrOptions["schema"]]["Tables"] &
-        Database[PublicTableNameOrOptions["schema"]]["Views"])
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
     : never = never,
-> = PublicTableNameOrOptions extends { schema: keyof Database }
-  ? (Database[PublicTableNameOrOptions["schema"]]["Tables"] &
-      Database[PublicTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R
     }
     ? R
     : never
-  : PublicTableNameOrOptions extends keyof (PublicSchema["Tables"] &
-        PublicSchema["Views"])
-    ? (PublicSchema["Tables"] &
-        PublicSchema["Views"])[PublicTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
         Row: infer R
       }
       ? R
@@ -79,20 +745,24 @@ export type Tables<
     : never
 
 export type TablesInsert<
-  PublicTableNameOrOptions extends
-    | keyof PublicSchema["Tables"]
-    | { schema: keyof Database },
-  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
-    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
-> = PublicTableNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Insert: infer I
     }
     ? I
     : never
-  : PublicTableNameOrOptions extends keyof PublicSchema["Tables"]
-    ? PublicSchema["Tables"][PublicTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
         Insert: infer I
       }
       ? I
@@ -100,20 +770,24 @@ export type TablesInsert<
     : never
 
 export type TablesUpdate<
-  PublicTableNameOrOptions extends
-    | keyof PublicSchema["Tables"]
-    | { schema: keyof Database },
-  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
-    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
-> = PublicTableNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Update: infer U
     }
     ? U
     : never
-  : PublicTableNameOrOptions extends keyof PublicSchema["Tables"]
-    ? PublicSchema["Tables"][PublicTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
         Update: infer U
       }
       ? U
@@ -121,30 +795,44 @@ export type TablesUpdate<
     : never
 
 export type Enums<
-  PublicEnumNameOrOptions extends
-    | keyof PublicSchema["Enums"]
-    | { schema: keyof Database },
-  EnumName extends PublicEnumNameOrOptions extends { schema: keyof Database }
-    ? keyof Database[PublicEnumNameOrOptions["schema"]]["Enums"]
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
     : never = never,
-> = PublicEnumNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicEnumNameOrOptions["schema"]]["Enums"][EnumName]
-  : PublicEnumNameOrOptions extends keyof PublicSchema["Enums"]
-    ? PublicSchema["Enums"][PublicEnumNameOrOptions]
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
     : never
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
-    | keyof PublicSchema["CompositeTypes"]
-    | { schema: keyof Database },
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
   CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
-    schema: keyof Database
+    schema: keyof DatabaseWithoutInternals
   }
-    ? keyof Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
     : never = never,
-> = PublicCompositeTypeNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof PublicSchema["CompositeTypes"]
-    ? PublicSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
 
+export const Constants = {
+  public: {
+    Enums: {
+      job_status: ["queued", "running", "succeeded", "failed"],
+      manifest_format: ["json", "yaml", "xml", "csv", "text"],
+    },
+  },
+} as const

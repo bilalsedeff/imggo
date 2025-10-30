@@ -89,11 +89,11 @@ async function tryApiKeyAuth(
 /**
  * Try to authenticate with Supabase Session (cookie-based)
  *
- * @param request - Next.js request
+ * @param _request - Next.js request (unused - cookies are accessed directly)
  * @returns Auth context or null
  */
 async function trySessionAuth(
-  request: NextRequest
+  _request: NextRequest
 ): Promise<AuthContext | null> {
   try {
     const cookieStore = await cookies();
@@ -260,4 +260,31 @@ export function getRequestIp(request: NextRequest): string {
     request.headers.get("x-real-ip") ||
     "unknown"
   );
+}
+
+/**
+ * Legacy authenticateRequest function for backward compatibility
+ * Returns authenticated status and userId
+ *
+ * @param request - Next.js request
+ * @returns Auth result with authenticated flag and userId
+ */
+export async function authenticateRequest(request: NextRequest): Promise<{
+  authenticated: boolean;
+  userId: string | null;
+  authType?: "api_key" | "session";
+}> {
+  try {
+    const authContext = await requireAuthOrApiKey(request);
+    return {
+      authenticated: true,
+      userId: authContext.userId,
+      authType: authContext.authType,
+    };
+  } catch (error) {
+    return {
+      authenticated: false,
+      userId: null,
+    };
+  }
 }

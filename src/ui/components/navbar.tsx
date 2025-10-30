@@ -70,6 +70,16 @@ export function Navbar() {
             Patterns
           </Link>
           <Link
+            href="/docs"
+            className={`text-sm font-medium transition px-3 py-1.5 rounded-md ${
+              pathname?.startsWith("/docs")
+                ? "text-foreground bg-accent/50 shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Docs
+          </Link>
+          <Link
             href="/logs"
             className={`text-sm font-medium transition px-3 py-1.5 rounded-md ${
               pathname === "/logs"

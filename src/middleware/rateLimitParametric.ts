@@ -12,7 +12,7 @@
  * Enterprise: 50000+ req/month (custom)
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { logger } from "@/lib/logger";
 import { AuthContext } from "@/lib/auth-unified";

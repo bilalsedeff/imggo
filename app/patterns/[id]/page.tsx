@@ -462,7 +462,9 @@ export default function PatternDetailPage() {
     if (!session?.access_token) return;
 
     try {
-      const response = await fetch(`/api/jobs/${jobId}`, {
+      // Include format parameter to get response in pattern's native format
+      const formatParam = pattern?.format ? `?format=${pattern.format}` : '';
+      const response = await fetch(`/api/jobs/${jobId}${formatParam}`, {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         },
