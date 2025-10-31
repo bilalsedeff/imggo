@@ -13,6 +13,7 @@ import {
   successResponse,
   ApiError,
 } from "@/lib/api-helpers";
+import { requireAuthOrApiKey } from "@/lib/auth-unified";
 import { UpdatePatternSchema } from "@/schemas/pattern";
 import * as patternService from "@/services/patternService";
 import { getUserPlan } from "@/services/planService";
@@ -26,16 +27,17 @@ export const GET = withErrorHandling(
     context?: { params: Promise<Record<string, string>> }
   ) => {
     if (!context) throw new ApiError("Missing params", 400);
-    const user = await requireAuth(request);
+    // 🔒 SECURITY: Require patterns:read scope for reading pattern details
+    const authContext = await requireAuthOrApiKey(request, "patterns:read");
     const { id } = await context.params;
     if (!id) throw new ApiError("Missing pattern ID", 400);
 
     logger.info("Getting pattern via API", {
       pattern_id: id,
-      user_id: user.userId,
+      user_id: authContext.userId,
     });
 
-    const pattern = await patternService.getPattern(id, user.userId);
+    const pattern = await patternService.getPattern(id, authContext.userId);
 
     if (!pattern) {
       throw new ApiError("Pattern not found", 404, "NOT_FOUND");

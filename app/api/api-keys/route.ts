@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuthOrApiKey } from "@/lib/auth-unified";
 import { createApiKey, listApiKeys } from "@/services/apiKeyService";
+import { checkFeatureLimit } from "@/services/planService";
 import { logger } from "@/lib/logger";
 import { z } from "zod";
 
@@ -45,6 +46,26 @@ export async function POST(request: NextRequest) {
     // Parse request body
     const body = await request.json();
     const input = CreateApiKeySchema.parse(body);
+
+    // 🔒 SECURITY: Check API key creation limit
+    const existingKeys = await listApiKeys(authContext.userId);
+    const limitCheck = await checkFeatureLimit(authContext.userId, 'api_keys', existingKeys.length);
+
+    if (!limitCheck.allowed) {
+      logger.warn("API key creation blocked - plan limit reached", {
+        user_id: authContext.userId,
+        current_count: existingKeys.length,
+        limit: limitCheck.limit,
+      });
+      return NextResponse.json(
+        {
+          error: "Plan limit exceeded",
+          message: limitCheck.message || "API key creation limit reached",
+          code: "PLAN_LIMIT_EXCEEDED",
+        },
+        { status: 403 }
+      );
+    }
 
     logger.info("Creating API key", {
       user_id: authContext.userId,

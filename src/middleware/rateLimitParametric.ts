@@ -39,6 +39,7 @@ export interface RateLimitStatus {
 
 interface EnforceRateLimitOptions {
   statusRef?: { current?: RateLimitStatus };
+  skipBurstLimit?: boolean; // Skip burst rate limit check (for pattern/webhook creation)
 }
 
 /**
@@ -49,11 +50,13 @@ interface EnforceRateLimitOptions {
  *
  * @param userId - User ID
  * @param authContext - Auth context (for logging)
+ * @param skipBurstLimit - Skip burst limit check (for pattern/webhook creation)
  * @returns Rate limit status
  */
 export async function checkRateLimit(
   userId: string,
-  authContext: AuthContext
+  authContext: AuthContext,
+  skipBurstLimit = false
 ): Promise<RateLimitStatus> {
   try {
     // Get user's plan details (includes limits and usage)
@@ -129,7 +132,8 @@ export async function checkRateLimit(
     }
 
     // Check 2: Burst rate limit (FREE plan only: 1 req/min)
-    if (burstLimitSeconds) {
+    // Skip burst limit for pattern/webhook creation (only applies to ingest endpoints)
+    if (burstLimitSeconds && !skipBurstLimit) {
       const lastRequestAt = userPlan.last_burst_request_at;
       if (lastRequestAt) {
         const timeSinceLastRequest = (Date.now() - new Date(lastRequestAt).getTime()) / 1000;
@@ -297,8 +301,8 @@ export async function enforceRateLimit(
   requestIp: string,
   options?: EnforceRateLimitOptions
 ): Promise<NextResponse | null> {
-  // Check rate limit
-  const rateLimitStatus = await checkRateLimit(userId, authContext);
+  // Check rate limit (skip burst limit if requested)
+  const rateLimitStatus = await checkRateLimit(userId, authContext, options?.skipBurstLimit);
 
   // Log request for analytics (non-blocking, optional)
   logApiRequest(userId, authContext, endpoint, requestIp);

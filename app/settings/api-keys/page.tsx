@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Navbar } from "@/ui/components/navbar";
 import { useAuth } from "@/providers/auth-provider";
 import {
   Key,
@@ -50,13 +49,12 @@ interface PlanLimits {
 
 const AVAILABLE_SCOPES = [
   { value: "patterns:read", label: "View patterns", default: true, active: true },
-  { value: "patterns:write", label: "Create and update patterns", default: false, active: false },
+  { value: "patterns:write", label: "Create and update patterns", default: false, active: true },
   { value: "patterns:ingest", label: "Submit images for processing", default: true, active: true },
-  { value: "patterns:delete", label: "Delete patterns", default: false, active: false },
   { value: "jobs:read", label: "View job status and results", default: true, active: true },
-  { value: "webhooks:read", label: "View webhooks", default: false, active: false },
-  { value: "webhooks:write", label: "Create and update webhooks", default: false, active: false },
-  { value: "webhooks:delete", label: "Delete webhooks", default: false, active: false },
+  { value: "webhooks:read", label: "View webhooks", default: false, active: true },
+  { value: "webhooks:write", label: "Create and update webhooks", default: false, active: true },
+  { value: "webhooks:delete", label: "Delete webhooks", default: false, active: true },
 ];
 
 // ============================================================================
@@ -154,30 +152,27 @@ export default function ApiKeysPage() {
   const canCreateMoreKeys = planLimits && apiKeys.length < planLimits.limits.max_api_keys;
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <div className="p-8">
-        <div className="max-w-5xl mx-auto">
-          {/* Header */}
-          <div className="flex justify-between items-center mb-8">
-            <div>
-              <h1 className="text-3xl font-bold mb-2">API Keys</h1>
-              <p className="text-muted-foreground">
-                Manage your API keys for programmatic access to ImgGo
-              </p>
-            </div>
-            <button
-              onClick={() => setShowCreateDialog(true)}
-              disabled={!canCreateMoreKeys}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              Create API Key
-            </button>
-          </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold mb-2">API Keys</h2>
+          <p className="text-muted-foreground">
+            Manage your API keys for programmatic access
+          </p>
+        </div>
+        <button
+          onClick={() => setShowCreateDialog(true)}
+          disabled={!canCreateMoreKeys}
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+        >
+          <Plus className="w-4 h-4" />
+          Create API Key
+        </button>
+      </div>
 
-          {/* Plan Limits Info */}
-          {planLimits && (
+      {/* Plan Limits Info */}
+      {planLimits && (
             <div className="mb-6 p-4 border border-border rounded-lg bg-muted/30">
               <div className="flex items-start gap-3">
                 <Info className="w-5 h-5 text-muted-foreground mt-0.5" />
@@ -297,8 +292,6 @@ export default function ApiKeysPage() {
               ))}
             </div>
           )}
-        </div>
-      </div>
 
       {/* Create API Key Dialog */}
       {showCreateDialog && (
@@ -437,7 +430,7 @@ function CreateApiKeyDialog({
                   type="radio"
                   value="test"
                   checked={environment === "test"}
-                  onChange={(e) => setEnvironment("test")}
+                  onChange={() => setEnvironment("test")}
                   className="w-4 h-4"
                 />
                 <span>Test (Development)</span>
@@ -447,7 +440,7 @@ function CreateApiKeyDialog({
                   type="radio"
                   value="live"
                   checked={environment === "live"}
-                  onChange={(e) => setEnvironment("live")}
+                  onChange={() => setEnvironment("live")}
                   className="w-4 h-4"
                 />
                 <span>Live (Production)</span>
@@ -491,6 +484,9 @@ function CreateApiKeyDialog({
                 </label>
               ))}
             </div>
+            <p className="text-xs text-muted-foreground mt-3">
+              * Pattern deletions can only be performed through the dashboard UI for security reasons.
+            </p>
             {selectedScopes.length === 0 && (
               <p className="text-sm text-destructive mt-2">
                 Select at least one permission

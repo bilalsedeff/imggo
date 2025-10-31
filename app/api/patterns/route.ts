@@ -7,18 +7,24 @@
 import { NextRequest } from "next/server";
 import {
   withErrorHandling,
-  requireAuth,
   parseBody,
   parseQuery,
   successResponse,
   ApiError,
 } from "@/lib/api-helpers";
+import { requireAuthOrApiKey } from "@/lib/auth-unified";
 import { CreatePatternSchema } from "@/schemas/pattern";
 import { ListPatternsQuerySchema } from "@/schemas/api";
 import * as patternService from "@/services/patternService";
-import { getUserPlan } from "@/services/planService";
+import { getUserPlan, checkFeatureLimit } from "@/services/planService";
 import { logger } from "@/lib/logger";
-import { checkRateLimitOrFail } from "@/middleware/rateLimit";
+import {
+  findWhitespaceViolations,
+  validateYamlSyntax,
+  validateXmlSyntax,
+  validateCsvFormat,
+  validateMarkdownHeadings
+} from "@/schemas/pattern";
 import OpenAI from "openai";
 
 const BASE_URL = process.env.APP_BASE_URL || "http://localhost:3000";
@@ -28,19 +34,108 @@ const openai = new OpenAI({
 });
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
-  const user = await requireAuth(request);
+  // 🔒 SECURITY: Require patterns:write scope for pattern creation
+  const authContext = await requireAuthOrApiKey(request, "patterns:write");
+  const userId = authContext.userId;
 
-  // Rate limiting check (10 patterns per hour)
-  const rateLimitResponse = await checkRateLimitOrFail(
-    request,
-    "patterns.create"
-  );
-  if (rateLimitResponse) return rateLimitResponse;
+  // NOTE: Pattern creation does NOT have rate limiting
+  // Only has plan limit check (max patterns allowed, e.g., 5 on Free plan)
+  // Rate limiting ONLY applies to pattern ingest endpoints (image processing)
 
   const input = await parseBody(request, CreatePatternSchema);
 
+  // 🔒 VALIDATION: Format-specific schema validation
+  // These validations match the UI validation rules (app/patterns/new/page.tsx)
+  // Even though users provide their own schemas via API, they must still pass validation
+
+  if (input.format === "json" && input.json_schema) {
+    // Validate JSON schema for whitespace violations
+    const violations = findWhitespaceViolations(input.json_schema);
+    if (violations.length > 0) {
+      throw new ApiError(violations[0] || "Invalid JSON schema", 400, "INVALID_SCHEMA");
+    }
+  } else if (input.format === "yaml" && input.yaml_schema) {
+    // Validate YAML syntax
+    const result = validateYamlSyntax(input.yaml_schema);
+    if (!result.valid) {
+      throw new ApiError(result.error || "Invalid YAML syntax", 400, "INVALID_SCHEMA");
+    }
+  } else if (input.format === "xml" && input.xml_schema) {
+    // Validate XML syntax
+    const result = validateXmlSyntax(input.xml_schema);
+    if (!result.valid) {
+      throw new ApiError(result.error || "Invalid XML syntax", 400, "INVALID_SCHEMA");
+    }
+  } else if (input.format === "csv" && input.csv_schema) {
+    // Validate CSV format
+    const result = validateCsvFormat(input.csv_schema);
+    if (!result.valid) {
+      throw new ApiError(result.error || "Invalid CSV format", 400, "INVALID_SCHEMA");
+    }
+
+    // Additional CSV validation: delimiter consistency check
+    const delimiter = input.csv_delimiter === "semicolon" ? ";" : ",";
+    const lines = input.csv_schema.trim().split("\n");
+
+    if (lines.length >= 2) {
+      // Smart delimiter counting (respects quoted cells)
+      const countDelimiters = (line: string, delim: string): number => {
+        let count = 0;
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          if (line[i] === '"') inQuotes = !inQuotes;
+          if (!inQuotes && line[i] === delim) count++;
+        }
+        return count;
+      };
+
+      const headerLine = lines[0];
+      if (!headerLine) {
+        throw new ApiError("CSV header row is empty", 400, "INVALID_SCHEMA");
+      }
+      const headerDelimiterCount = countDelimiters(headerLine, delimiter);
+
+      for (let i = 1; i < lines.length; i++) {
+        const currentLine = lines[i];
+        if (!currentLine) continue; // Skip empty lines
+
+        const lineDelimiterCount = countDelimiters(currentLine, delimiter);
+        if (lineDelimiterCount !== headerDelimiterCount) {
+          throw new ApiError(
+            `CSV row ${i + 1} has ${lineDelimiterCount} delimiters, expected ${headerDelimiterCount}. All rows must have the same number of columns.`,
+            400,
+            "INVALID_SCHEMA"
+          );
+        }
+      }
+    }
+  } else if (input.format === "text" && input.plain_text_schema) {
+    // Validate Plain Text markdown headings
+    const result = validateMarkdownHeadings(input.plain_text_schema);
+    if (!result.valid) {
+      throw new ApiError(result.error || "Invalid markdown heading structure", 400, "INVALID_SCHEMA");
+    }
+  }
+
+  // 🔒 SECURITY: Check pattern creation limit
+  const currentPatternCount = await patternService.countUserPatterns(userId);
+  const limitCheck = await checkFeatureLimit(userId, 'patterns', currentPatternCount);
+
+  if (!limitCheck.allowed) {
+    logger.warn("Pattern creation blocked - plan limit reached", {
+      user_id: userId,
+      current_count: currentPatternCount,
+      limit: limitCheck.limit,
+    });
+    throw new ApiError(
+      limitCheck.message || "Pattern creation limit reached",
+      403,
+      "PLAN_LIMIT_EXCEEDED"
+    );
+  }
+
   logger.info("Creating pattern via API", {
-    user_id: user.userId,
+    user_id: userId,
     name: input.name,
     format: input.format,
     has_json_schema: !!input.json_schema,
@@ -62,7 +157,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Auto-generate JSON schema if missing (required for all formats)
   if (!input.json_schema) {
     logger.info("Auto-generating JSON schema from instructions", {
-      user_id: user.userId,
+      user_id: userId,
       pattern_name: input.name,
     });
 
@@ -111,13 +206,13 @@ Respond ONLY with the JSON Schema.`,
         input.json_schema = schema;
 
         logger.info("JSON schema auto-generated successfully", {
-          user_id: user.userId,
+          user_id: userId,
           pattern_name: input.name,
         });
       }
     } catch (error) {
       logger.error("Failed to auto-generate JSON schema", error, {
-        user_id: user.userId,
+        user_id: userId,
         pattern_name: input.name,
       });
       // Continue without schema - will use default schema during inference
@@ -134,7 +229,7 @@ Respond ONLY with the JSON Schema.`,
 
   if (hasFormatSchema) {
     logger.info("Using format-specific schema from Pattern Studio", {
-      user_id: user.userId,
+      user_id: userId,
       pattern_name: input.name,
       format: input.format,
     });
@@ -145,7 +240,7 @@ Respond ONLY with the JSON Schema.`,
       const validation = validateMarkdownHeadings(input.plain_text_schema);
       if (!validation.valid) {
         logger.error("Plain Text schema validation failed", {
-          user_id: user.userId,
+          user_id: userId,
           pattern_name: input.name,
           error: validation.error,
         });
@@ -158,7 +253,7 @@ Respond ONLY with the JSON Schema.`,
     const format = input.format || "json";
     
     logger.info("Generating format-specific example (not provided from frontend)", {
-      user_id: user.userId,
+      user_id: userId,
       pattern_name: input.name,
       format: format,
     });
@@ -196,12 +291,17 @@ Respond ONLY with the JSON Schema.`,
 - Respond ONLY with plain text, no markdown or special formatting`,
       };
 
+      const systemPrompt = formatInstructions[format];
+      if (!systemPrompt) {
+        throw new Error(`Unsupported format for template generation: ${format}`);
+      }
+
       const response = await openai.chat.completions.create({
         model: "gpt-4o-2024-08-06",
         messages: [
           {
             role: "system",
-            content: formatInstructions[format],
+            content: systemPrompt,
           },
           {
             role: "user",
@@ -237,14 +337,14 @@ Respond ONLY with the JSON Schema.`,
         }
 
         logger.info("Format-specific example generated successfully", {
-          user_id: user.userId,
+          user_id: userId,
           pattern_name: input.name,
           format: input.format,
         });
       }
     } catch (error) {
       logger.error("Failed to generate format-specific example", error, {
-        user_id: user.userId,
+        user_id: userId,
         pattern_name: input.name,
         format: input.format,
       });
@@ -253,7 +353,7 @@ Respond ONLY with the JSON Schema.`,
   }
 
   // Validate template character limit against user's plan
-  const userPlan = await getUserPlan(user.userId);
+  const userPlan = await getUserPlan(userId);
   const maxTemplateChars = userPlan.plan.max_template_characters;
 
   // Calculate template length based on format
@@ -277,7 +377,7 @@ Respond ONLY with the JSON Schema.`,
   }
 
   logger.info("Validating template character limit", {
-    user_id: user.userId,
+    user_id: userId,
     pattern_name: input.name,
     format: input.format,
     template_length: templateLength,
@@ -287,7 +387,7 @@ Respond ONLY with the JSON Schema.`,
 
   if (templateLength > maxTemplateChars) {
     logger.warn("Template exceeds plan character limit", {
-      user_id: user.userId,
+      user_id: userId,
       pattern_name: input.name,
       template_length: templateLength,
       max_template_chars: maxTemplateChars,
@@ -301,7 +401,7 @@ Respond ONLY with the JSON Schema.`,
   }
 
   // The input is already transformed by Zod, so it has the correct type
-  const pattern = await patternService.createPattern(user.userId, input as import("@/schemas/pattern").CreatePatternInput);
+  const pattern = await patternService.createPattern(userId, input as import("@/schemas/pattern").CreatePatternInput);
 
   // Return pattern with endpoint URL
   const patternWithEndpoint = {
@@ -313,15 +413,17 @@ Respond ONLY with the JSON Schema.`,
 });
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
-  const user = await requireAuth(request);
+  // 🔒 SECURITY: Require patterns:read scope for listing patterns
+  const authContext = await requireAuthOrApiKey(request, "patterns:read");
+  const userId = authContext.userId;
 
   const query = parseQuery(request, ListPatternsQuerySchema);
 
   logger.info("Listing patterns via API", {
-    user_id: user.userId,
+    user_id: userId,
   });
 
-  const { patterns, total } = await patternService.listPatterns(user.userId, {
+  const { patterns, total } = await patternService.listPatterns(userId, {
     isActive: query.is_active,
     page: query.page,
     perPage: query.per_page,
