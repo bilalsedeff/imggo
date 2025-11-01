@@ -4,7 +4,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ApiReferenceReact } from "@scalar/nextjs-api-reference";
+import { ApiReferenceReact } from "@scalar/api-reference-react";
+import "@scalar/api-reference-react/style.css";
 
 type NavSection = {
   id: string;
@@ -1416,18 +1417,13 @@ pattern = create_yaml_pattern()`}
         <div className="rounded-lg border border-border overflow-hidden">
           <ApiReferenceReact
             configuration={{
-              spec: {
-                url: '/openapi.yaml',
-              },
+              url: '/openapi.yaml',
               theme: 'none',
               layout: 'modern',
               showSidebar: false,
               searchHotKey: 'k',
               authentication: {
                 preferredSecurityScheme: 'bearerAuth',
-                apiKey: {
-                  token: '',
-                },
               },
               defaultOpenAllTags: false,
             }}

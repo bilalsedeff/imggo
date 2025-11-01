@@ -242,7 +242,21 @@ Webhook payload:
 
 ## API Reference
 
-See [openapi.yaml](./openapi.yaml) for complete API documentation.
+**Interactive Documentation**: Visit `/docs` in your running application for an interactive API reference where you can test endpoints directly in your browser.
+
+**OpenAPI Specification**: See [openapi.yaml](./openapi.yaml) for the complete OpenAPI 3.1.0 specification.
+
+**Implementation Guide**: See [docs/OPENAPI-IMPLEMENTATION.md](./docs/OPENAPI-IMPLEMENTATION.md) for details on how to add new endpoints and integrate with CI/CD.
+
+### Key Endpoints
+
+- `POST /api/patterns` - Create a new pattern
+- `POST /api/patterns/:id/ingest` - Submit an image for processing
+- `GET /api/jobs/:id` - Check job status and retrieve results
+- `POST /api/uploads/signed-url` - Get a signed URL for direct image upload
+- `POST /api/webhooks` - Register a webhook for job notifications
+
+For a complete list of all 12 endpoints with request/response examples, visit the interactive documentation.
 
 ## Testing
 
@@ -332,6 +346,9 @@ MIT License - see LICENSE file for details
 
 ## Support
 
-- Documentation: [docs/](./docs/)
+- **Architecture Guide**: [docs/architecture.md](./docs/architecture.md)
+- **OpenAPI Implementation**: [docs/OPENAPI-IMPLEMENTATION.md](./docs/OPENAPI-IMPLEMENTATION.md)
+- **Interactive API Docs**: `/docs` in your running application
+- **OpenAPI Spec**: [openapi.yaml](./openapi.yaml)
 - Issues: GitHub Issues
 - Email: support@imggo.ai
