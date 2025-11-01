@@ -144,19 +144,8 @@ export async function createApiKey(params: CreateApiKeyParams): Promise<{
   const { userId, name, environment, scopes, expiresAt, ipWhitelist } = params;
 
   try {
-    // Check if user can create more API keys (plan limits)
-    const { data: canCreate, error: limitError } = await supabaseServer.rpc(
-      "can_create_api_key",
-      { p_user_id: userId }
-    );
-
-    if (limitError) {
-      throw new Error(`Failed to check API key limit: ${limitError.message}`);
-    }
-
-    if (!canCreate) {
-      throw new Error("API key limit reached for your plan. Please upgrade or revoke unused keys.");
-    }
+    // NOTE: Plan limit checking is now done in the route handler (app/api/api-keys/route.ts)
+    // using checkFeatureLimit() before calling this service function
 
     // Generate plain key
     const plainKey = generateApiKey(environment);

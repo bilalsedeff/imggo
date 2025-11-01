@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Navbar } from "@/ui/components/navbar";
 import { useAuth } from "@/providers/auth-provider";
 import {
   CreditCard,
@@ -146,30 +145,20 @@ export default function BillingPage() {
     : Crown;
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <div className="p-8">
-        <div className="max-w-5xl mx-auto">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2">Billing & Usage</h1>
-            <p className="text-muted-foreground">
-              Manage your subscription and monitor your usage
-            </p>
-          </div>
-
-          {isLoading ? (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground">Loading billing information...</p>
-            </div>
-          ) : !userPlan ? (
-            <div className="text-center py-12 border border-border rounded-lg">
-              <AlertCircle className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-              <p className="text-muted-foreground">Failed to load billing information</p>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {/* Current Plan Card */}
-              <div className="border border-border rounded-lg p-6 bg-muted/30">
+    <div className="space-y-6">
+      {isLoading ? (
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">Loading billing information...</p>
+        </div>
+      ) : !userPlan ? (
+        <div className="text-center py-12 border border-border rounded-lg">
+          <AlertCircle className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+          <p className="text-muted-foreground">Failed to load billing information</p>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {/* Current Plan Card */}
+          <div className="border border-border rounded-lg p-6 bg-muted/30">
                 <div className="flex items-start justify-between mb-6">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -393,8 +382,6 @@ export default function BillingPage() {
               </div>
             </div>
           )}
-        </div>
-      </div>
     </div>
   );
 }

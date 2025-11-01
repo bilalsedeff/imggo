@@ -4,25 +4,48 @@
  * GET /api/webhooks - List webhooks
  */
 
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import {
   withErrorHandling,
-  requireAuth,
   parseBody,
   successResponse,
 } from "@/lib/api-helpers";
+import { requireAuthOrApiKey } from "@/lib/auth-unified";
 import { WebhookCreateSchema } from "@/schemas/api";
 import * as webhookService from "@/services/webhookService";
+import { checkFeatureLimit } from "@/services/planService";
 import { generateWebhookSecret } from "@/lib/crypto";
 import { logger } from "@/lib/logger";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
-  const user = await requireAuth(request);
+  // 🔒 SECURITY: Require webhooks:write scope for webhook creation
+  const authContext = await requireAuthOrApiKey(request, "webhooks:write");
+  const userId = authContext.userId;
 
   const input = await parseBody(request, WebhookCreateSchema);
 
+  // 🔒 SECURITY: Check webhook creation limit
+  const existingWebhooks = await webhookService.listWebhooks(userId);
+  const limitCheck = await checkFeatureLimit(userId, 'webhooks', existingWebhooks.length);
+
+  if (!limitCheck.allowed) {
+    logger.warn("Webhook creation blocked - plan limit reached", {
+      user_id: userId,
+      current_count: existingWebhooks.length,
+      limit: limitCheck.limit,
+    });
+    return NextResponse.json(
+      {
+        error: "Plan limit exceeded",
+        message: limitCheck.message || "Webhook creation limit reached",
+        code: "PLAN_LIMIT_EXCEEDED",
+      },
+      { status: 403 }
+    );
+  }
+
   logger.info("Creating webhook via API", {
-    user_id: user.userId,
+    user_id: userId,
     url: input.url,
   });
 
@@ -32,7 +55,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const events = input.events || ["job.succeeded", "job.failed"];
 
   const result = await webhookService.createWebhook({
-    userId: user.userId,
+    userId,
     url: input.url,
     secret,
     events,
@@ -50,13 +73,15 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 });
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
-  const user = await requireAuth(request);
+  // 🔒 SECURITY: Require webhooks:read scope for listing webhooks
+  const authContext = await requireAuthOrApiKey(request, "webhooks:read");
+  const userId = authContext.userId;
 
   logger.info("Listing webhooks via API", {
-    user_id: user.userId,
+    user_id: userId,
   });
 
-  const webhooks = await webhookService.listWebhooks(user.userId);
+  const webhooks = await webhookService.listWebhooks(userId);
 
   return successResponse({
     data: webhooks,

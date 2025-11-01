@@ -591,3 +591,27 @@ export async function switchToPatternVersion(
     throw error;
   }
 }
+
+/**
+ * Count active patterns for a user
+ * Used for plan limit enforcement
+ */
+export async function countUserPatterns(userId: string): Promise<number> {
+  try {
+    const { count, error } = await supabaseServer
+      .from("patterns")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("is_active", true);
+
+    if (error) {
+      logger.error("Failed to count user patterns", error);
+      throw error;
+    }
+
+    return count || 0;
+  } catch (error) {
+    logger.error("Exception counting user patterns", error);
+    throw error;
+  }
+}

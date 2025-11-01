@@ -96,9 +96,21 @@ export const POST = withErrorHandling(
         throw new ApiError("Missing 'image' field in form data", 400);
       }
 
-      // Validate file type
+      // Validate file type (MIME)
       if (!imageFile.type.startsWith("image/")) {
         throw new ApiError("File must be an image", 400);
+      }
+
+      // Validate file extension (defense in depth)
+      const allowedExtensions = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"];
+      const filename = imageFile.name.toLowerCase();
+      const hasValidExtension = allowedExtensions.some((ext) => filename.endsWith(ext));
+
+      if (!hasValidExtension) {
+        throw new ApiError(
+          `Invalid file extension. Allowed: ${allowedExtensions.join(", ")}`,
+          400
+        );
       }
 
       // Validate file size (max 10MB)

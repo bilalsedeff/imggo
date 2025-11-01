@@ -81,3 +81,11 @@ package-lock.json
 */package-lock.json
 load-test-results/
 major-test/
+test-improvements.js
+test-ingest-headers.js
+RATE-LIMIT-MIGRATION-SCOPE.md
+MIGRATION-COMPLETE.md
+MULTIPLE_DRAFTS_IMPLEMENTATION.md
+CRITICAL-SECURITY-GAP-PLAN-LIMITS.md
+SMOKING-GUN-EVIDENCE.md
+FIX-DUPLICATE-LIMIT-CHECK.md

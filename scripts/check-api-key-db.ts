@@ -41,23 +41,8 @@ async function checkApiKey() {
   console.log("SHA-256 Hash:", hash);
   console.log("");
 
-  // Check if api_keys table exists
-  const { data: tables, error: tablesError } = await supabase.rpc("exec_sql", {
-    sql: "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'api_keys';",
-  }).catch(() => {
-    // RPC might not exist, try direct query
-    return supabase
-      .from("api_keys")
-      .select("*")
-      .limit(0);
-  });
-
-  if (tablesError) {
-    console.error("❌ Error checking if api_keys table exists:", tablesError);
-    console.log("\n💡 Tip: Run the migration first:");
-    console.log("   Supabase Dashboard → SQL Editor → Paste migration SQL");
-    return;
-  }
+  // Check if api_keys table exists (simplified - just try to query it)
+  // Skip the table existence check and go straight to querying
 
   // Try to query the API key
   const { data: apiKeys, error } = await supabase
