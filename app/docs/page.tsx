@@ -440,7 +440,7 @@ const sections: NavSection[] = [
     ),
   },
   {
-    id: "api-reference",
+    id: "api-endpoints",
     title: "API Reference",
     description: "Complete API endpoints, authentication, and code examples.",
     content: (

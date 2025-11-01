@@ -1,0 +1,53 @@
+name: Validate OpenAPI Spec
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'src/schemas/**'
+      - 'src/openapi/**'
+      - 'app/api/**'
+      - 'scripts/generate-openapi.ts'
+      - 'openapi.yaml'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate OpenAPI spec
+        run: npm run openapi:generate
+
+      - name: Check for changes
+        run: |
+          if ! git diff --quiet openapi.yaml; then
+            echo "❌ openapi.yaml is out of sync!"
+            echo ""
+            echo "The OpenAPI specification has changed but was not committed."
+            echo "Please run the following command locally and commit the changes:"
+            echo ""
+            echo "  npm run openapi:generate"
+            echo "  git add openapi.yaml"
+            echo "  git commit -m 'chore: update OpenAPI spec'"
+            echo ""
+            echo "Changes detected:"
+            git diff openapi.yaml
+            exit 1
+          else
+            echo "✅ openapi.yaml is up to date"
+          fi
+
+      - name: Validate OpenAPI spec
+        run: npm run openapi:validate
