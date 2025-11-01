@@ -4,6 +4,10 @@
 
 import { z } from "zod";
 import { JobStatusSchema } from "./manifest";
+import { extendZodWithOpenApi } from "@asteasolutions/zod-to-openapi";
+
+// Extend Zod with OpenAPI capabilities
+extendZodWithOpenApi(z);
 
 /**
  * Common response wrappers
@@ -22,6 +26,19 @@ export const ErrorResponseSchema = z.object({
     message: z.string(),
     details: z.record(z.unknown()).optional(),
   }),
+}).openapi('ErrorResponse', {
+  description: 'Standard error response format',
+  example: {
+    success: false,
+    error: {
+      code: 'INVALID_SCHEMA',
+      message: 'The provided JSON schema is invalid',
+      details: {
+        field: 'json_schema',
+        reason: 'Property keys cannot contain whitespace'
+      }
+    }
+  }
 });
 
 export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
@@ -130,6 +147,13 @@ export const WebhookCreateSchema = z.object({
     .min(1, "At least one event required")
     .default(["job.succeeded", "job.failed"]),
   secret: z.string().min(16, "Secret must be at least 16 characters").optional(),
+}).openapi('WebhookCreateRequest', {
+  description: 'Request body for creating a new webhook',
+  example: {
+    url: 'https://your-server.com/webhooks/imggo',
+    events: ['job.succeeded', 'job.failed'],
+    secret: 'your-webhook-secret-key-min-16-chars'
+  }
 });
 
 export type WebhookCreateInput = z.infer<typeof WebhookCreateSchema>;
@@ -162,6 +186,13 @@ export const ApiKeyCreateSchema = z.object({
   name: z.string().min(1).max(255),
   scopes: z.array(z.string()).default(["patterns:read", "patterns:ingest"]),
   expires_at: z.string().datetime().optional(),
+}).openapi('ApiKeyCreateRequest', {
+  description: 'Request body for creating a new API key',
+  example: {
+    name: 'Production Server Key',
+    scopes: ['patterns:read', 'patterns:ingest', 'jobs:read'],
+    expires_at: '2026-12-31T23:59:59Z'
+  }
 });
 
 export type ApiKeyCreateInput = z.infer<typeof ApiKeyCreateSchema>;

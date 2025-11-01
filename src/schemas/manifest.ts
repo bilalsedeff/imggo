@@ -3,6 +3,10 @@
  */
 
 import { z } from "zod";
+import { extendZodWithOpenApi } from "@asteasolutions/zod-to-openapi";
+
+// Extend Zod with OpenAPI capabilities
+extendZodWithOpenApi(z);
 
 /**
  * Job statuses
@@ -39,6 +43,31 @@ export const JobSchema = z.object({
   idempotency_key: z.string().nullable(),
   requested_by: z.string().uuid().nullable(),
   extras: z.record(z.unknown()).nullable(),
+}).openapi('Job', {
+  description: 'Job entity representing an image processing task',
+  example: {
+    id: '770e8400-e29b-41d4-a716-446655440000',
+    pattern_id: '550e8400-e29b-41d4-a716-446655440000',
+    image_url: 'https://storage.imggo.ai/uploads/product-image.jpg',
+    status: 'succeeded',
+    manifest: {
+      product_name: 'Wireless Mouse',
+      brand: 'Logitech',
+      price: 29.99,
+      in_stock: true
+    },
+    error: null,
+    latency_ms: 1250,
+    created_at: '2025-01-15T10:00:00Z',
+    updated_at: '2025-01-15T10:00:01.250Z',
+    started_at: '2025-01-15T10:00:00.100Z',
+    completed_at: '2025-01-15T10:00:01.250Z',
+    idempotency_key: 'unique-request-id-12345',
+    requested_by: '660e8400-e29b-41d4-a716-446655440000',
+    extras: {
+      source: 'mobile-app'
+    }
+  }
 });
 
 export type Job = z.infer<typeof JobSchema>;
@@ -53,6 +82,16 @@ export const IngestRequestSchema = z.object({
     .string()
     .regex(/^[a-zA-Z0-9_-]{1,255}$/, "Invalid idempotency key format")
     .optional(),
+}).openapi('IngestRequest', {
+  description: 'Request body for submitting an image for processing',
+  example: {
+    image_url: 'https://storage.imggo.ai/uploads/product-image.jpg',
+    extras: {
+      source: 'mobile-app',
+      user_id: 'usr_123'
+    },
+    idempotency_key: 'unique-request-id-12345'
+  }
 });
 
 export type IngestRequest = z.infer<typeof IngestRequestSchema>;

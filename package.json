@@ -5,7 +5,7 @@
   "description": "Schema-conformant image analysis at scale",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run openapi:generate && next build",
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
@@ -20,9 +20,12 @@
     "edge:serve": "supabase functions serve",
     "edge:deploy": "supabase functions deploy worker",
     "test-job": "tsx scripts/create-test-job-direct.ts",
-    "test-demo": "tsx scripts/test-demo.ts"
+    "test-demo": "tsx scripts/test-demo.ts",
+    "openapi:generate": "tsx scripts/generate-openapi.ts",
+    "openapi:validate": "tsx scripts/generate-openapi.ts && echo 'OpenAPI spec is valid'"
   },
   "dependencies": {
+    "@asteasolutions/zod-to-openapi": "^7.3.4",
     "@hookform/resolvers": "^3.9.1",
     "@radix-ui/react-dialog": "^1.1.2",
     "@radix-ui/react-dropdown-menu": "^2.1.2",
@@ -30,6 +33,7 @@
     "@radix-ui/react-select": "^2.1.2",
     "@radix-ui/react-slot": "^1.1.1",
     "@radix-ui/react-toast": "^1.2.2",
+    "@scalar/nextjs-api-reference": "^0.8.23",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.46.1",
     "@types/better-sqlite3": "^7.6.13",
@@ -76,6 +80,7 @@
     "postcss": "^8.4.49",
     "supabase": "^1.207.7",
     "tailwindcss": "^3.4.17",
+    "tsx": "^4.20.6",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   },

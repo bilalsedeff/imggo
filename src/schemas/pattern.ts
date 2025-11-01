@@ -5,6 +5,10 @@
 import { z } from "zod";
 import yaml from "js-yaml";
 import * as xmlJs from "xml-js";
+import { extendZodWithOpenApi } from "@asteasolutions/zod-to-openapi";
+
+// Extend Zod with OpenAPI capabilities
+extendZodWithOpenApi(z);
 
 export const ManifestFormatSchema = z.enum(["json", "yaml", "xml", "csv", "text"]);
 export type ManifestFormat = z.infer<typeof ManifestFormatSchema>;
@@ -401,7 +405,26 @@ export const CreatePatternSchema = BaseCreatePatternSchema.transform((data) => (
   version: data.version, // Pass through version (0 for drafts)
   is_active: data.is_active, // Pass through is_active (false for drafts)
   parent_pattern_id: data.parent_pattern_id, // Pass through parent pattern ID for draft versioning
-}));
+})).openapi('CreatePatternRequest', {
+  description: 'Request body for creating a new pattern',
+  example: {
+    name: 'Product Extraction',
+    format: 'json',
+    instructions: 'Extract product name, brand, price, and availability from product images',
+    json_schema: {
+      type: 'object',
+      properties: {
+        product_name: { type: 'string' },
+        brand: { type: 'string' },
+        price: { type: 'number' },
+        in_stock: { type: 'boolean' }
+      },
+      required: ['product_name'],
+      additionalProperties: false
+    },
+    model_profile: 'managed-default'
+  }
+});
 
 export type CreatePatternInput = {
   name: string;
@@ -434,6 +457,13 @@ export const UpdatePatternSchema = z.object({
   plain_text_schema: PlainTextSchemaValidator.optional(),
   is_active: z.boolean().optional(),
   publish_new_version: z.boolean().optional().default(false),
+}).openapi('UpdatePatternRequest', {
+  description: 'Request body for updating an existing pattern',
+  example: {
+    name: 'Updated Product Extraction',
+    instructions: 'Extract product name, brand, price, stock status, and product condition',
+    is_active: true
+  }
 });
 
 export type UpdatePatternInput = z.infer<typeof UpdatePatternSchema>;
@@ -459,6 +489,29 @@ export const PatternSchema = z.object({
   created_at: z.string().datetime(),
   updated_at: z.string().datetime(),
   parent_pattern_id: z.string().uuid().nullable().optional(), // Link to parent pattern for draft versioning
+}).openapi('Pattern', {
+  description: 'Pattern entity representing an image analysis configuration',
+  example: {
+    id: '550e8400-e29b-41d4-a716-446655440000',
+    user_id: '660e8400-e29b-41d4-a716-446655440000',
+    name: 'Product Extraction',
+    format: 'json',
+    json_schema: {
+      type: 'object',
+      properties: {
+        product_name: { type: 'string' },
+        brand: { type: 'string' },
+        price: { type: 'number' }
+      }
+    },
+    instructions: 'Extract product details from images',
+    model_profile: 'managed-default',
+    version: 1,
+    is_active: true,
+    created_at: '2025-01-15T10:00:00Z',
+    updated_at: '2025-01-15T10:00:00Z',
+    parent_pattern_id: null
+  }
 });
 
 export type Pattern = z.infer<typeof PatternSchema>;

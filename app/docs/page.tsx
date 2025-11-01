@@ -4,6 +4,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { ApiReferenceReact } from "@scalar/nextjs-api-reference";
 
 type NavSection = {
   id: string;
@@ -1383,6 +1384,65 @@ pattern = create_yaml_pattern()`}
               </a>
             </p>
           </div>
+        </div>
+      </div>
+    ),
+  },
+  {
+    id: "api-reference",
+    title: "Interactive API Reference",
+    description: "Explore and test all API endpoints with live examples.",
+    content: (
+      <div className="space-y-6">
+        <p className="leading-relaxed text-muted-foreground">
+          Try out the ImgGo API directly from this page! Our interactive API reference
+          lets you explore all endpoints, see request/response examples, and test live
+          API calls with your own API key.
+        </p>
+
+        <div className="rounded-lg border border-primary/20 bg-primary/5 p-5">
+          <h3 className="text-base font-semibold text-foreground mb-3">
+            How to Use
+          </h3>
+          <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
+            <li>Click on any endpoint below to expand its documentation</li>
+            <li>Click the <strong>Try It</strong> button to test with real data</li>
+            <li>Add your API key using the authentication button (top-right)</li>
+            <li>Customize the request parameters and body</li>
+            <li>Click <strong>Send</strong> to make a live API call and see the response</li>
+          </ol>
+        </div>
+
+        <div className="rounded-lg border border-border overflow-hidden">
+          <ApiReferenceReact
+            configuration={{
+              spec: {
+                url: '/openapi.yaml',
+              },
+              theme: 'none',
+              layout: 'modern',
+              showSidebar: false,
+              searchHotKey: 'k',
+              authentication: {
+                preferredSecurityScheme: 'bearerAuth',
+                apiKey: {
+                  token: '',
+                },
+              },
+              defaultOpenAllTags: false,
+            }}
+          />
+        </div>
+
+        <div className="rounded-md bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-900 p-4 text-sm">
+          <p className="font-semibold text-yellow-900 dark:text-yellow-200">
+            🔒 Live API Calls
+          </p>
+          <p className="mt-1 text-yellow-800 dark:text-yellow-300">
+            When you test endpoints using the "Try It" feature, real API calls are made to
+            your account. Make sure you&apos;re using a test API key if you&apos;re just
+            exploring!
+          </p>
         </div>
       </div>
     ),
